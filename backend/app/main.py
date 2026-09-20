@@ -12,6 +12,8 @@ from contextlib import asynccontextmanager
 from app.config import scheduler, settings
 from app.services.news_collector import collect_news
 
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # STARTUP
