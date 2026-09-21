@@ -185,7 +185,7 @@ function Calendar() {
         console.log(`Fetching events for ${days} days...`);
 
         const response = await fetch(
-          `http://localhost:8000/api/events?days=${days}`
+          "https://commoditytrack-production-5160.up.railway.app/api/events/upcoming"
         );
 
         console.log("API response:", response.status);
