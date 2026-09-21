@@ -6,53 +6,93 @@ from app.api import news
 from app.api import speeches
 from app.api import predictions
 from app.api import historical
-from app.api.market import fetch_market_data_from_db
+
 from contextlib import asynccontextmanager
 
 from app.config import scheduler, settings
 from app.services.news_collector import collect_news
-
+from app.services.market_collector import collect_market_data
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # STARTUP
     print("🚀 Starting CommodityTrack API...")
-    
-    if not scheduler.running:
-        # Add market data update job
+
+    try:
+        # Run market collection immediately
+        print("📊 Running initial market data collection...")
+        collect_market_data()
+
+        # News update job
         scheduler.add_job(
-        collect_news,
-        "interval",
-        seconds=settings.NEWS_UPDATE_INTERVAL,
-        id="news_data_update",
-        name="News Data Update",
-        replace_existing=True
-    )
-        scheduler.start()
-        print("✅ Scheduler started - Market updates every 60 seconds")
-    
+            collect_news,
+            "interval",
+            seconds=settings.NEWS_UPDATE_INTERVAL,
+            id="news_data_update",
+            name="News Data Update",
+            replace_existing=True
+        )
+
+        # Market update job
+        scheduler.add_job(
+            collect_market_data,
+            "interval",
+            seconds=settings.MARKET_UPDATE_INTERVAL,
+            id="market_data_update",
+            name="Market Data Update",
+            replace_existing=True
+        )
+
+        if not scheduler.running:
+            scheduler.start()
+
+        print(
+            f"✅ Scheduler started - "
+            f"Market updates every {settings.MARKET_UPDATE_INTERVAL} seconds"
+        )
+
+    except Exception as e:
+        print(f"❌ Scheduler startup error: {e}")
+
     yield
-    
+
     # SHUTDOWN
     if scheduler.running:
         scheduler.shutdown()
         print("✅ Scheduler stopped")
+
+
+# ============================================================
+# FASTAPI APP
+# ============================================================
+
 app = FastAPI(
-    title="Gold & Silver Market Intelligence"
+    title="Gold & Silver Market Intelligence",
+    lifespan=lifespan
 )
 
-# Frontend to Backend API access
+
+# ============================================================
+# CORS
+# ============================================================
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173",
-                   "http://127.0.0.1:5173",
-                   "https://commoditytrack-production-2084.up.railway.app",
-                   ],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://commoditytrack-production-2084.up.railway.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================================
+# ROUTERS
+# ============================================================
 
 app.include_router(events.router)
 app.include_router(market.router)
@@ -60,6 +100,11 @@ app.include_router(news.router)
 app.include_router(speeches.router)
 app.include_router(predictions.router)
 app.include_router(historical.router)
+
+
+# ============================================================
+# ROOT
+# ============================================================
 
 @app.get("/")
 def root():
