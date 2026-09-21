@@ -2,9 +2,7 @@ import React, { useEffect, useState } from "react";
 import "./App.css";
 
 // Railway Backend Production API URL
-const response = await fetch(
-  `${API_BASE}/api/events/upcoming?days=${days}`
-);
+const API_BASE = "https://commoditytrack-production-2084.up.railway.app";
 
 const news = [
   ["🏛️", "US CPI inflation remains elevated, keeps Fed rate cut hopes alive", "2 hours ago", "Reuters", "Positive", "Gold ↑", "Silver ↑"],
