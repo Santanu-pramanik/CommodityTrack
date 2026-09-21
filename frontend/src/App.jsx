@@ -144,29 +144,70 @@ function Topbar() {
 }
 
 function Sidebar() {
+  const [dashboardOpen, setDashboardOpen] = React.useState(true);
+  const [activeMenu, setActiveMenu] = React.useState("Home");
+
+  const menuItems = [
+    ["⌂", "Home"],
+    ["▣", "Economic Calendar"],
+    ["▰", "Market Dashboard"],
+    ["◆", "Gold", "sub"],
+    ["◈", "Silver", "sub"],
+    ["▤", "News"],
+    ["♩", "Speeches & Statements"],
+    ["▥", "Event Analysis"],
+    ["◔", "Historical Analysis"],
+    ["⚙", "AI Prediction"],
+    ["✿", "Settings"],
+  ];
+
   return (
     <aside className="sidebar">
       <div className="nav-group">
-        {[
-          ["⌂", "Home", true],
-          ["▣", "Economic Calendar"],
-          ["▰", "Market Dashboard", false, true],
-          ["◆", "Gold", false, false, "sub"],
-          ["◈", "Silver", false, false, "sub"],
-          ["▤", "News"],
-          ["♩", "Speeches & Statements"],
-          ["▥", "Event Analysis"],
-          ["◔", "Historical Analysis"],
-          ["⚙", "AI Prediction"],
-          ["✿", "Settings"],
-        ].map(([ico, label, active, open, cls], i) => (
-          <div key={i} className={`nav-item ${active ? "active" : ""} ${cls || ""} ${open ? "with-arrow" : ""}`}>
-            <Icon>{ico}</Icon><span>{label}</span>{open && <em>⌄</em>}
-          </div>
-        ))}
+
+        {menuItems.map(([ico, label, cls], i) => {
+
+          // Gold / Silver
+          if (cls === "sub" && !dashboardOpen) {
+            return null;
+          }
+
+          return (
+            <div
+              key={i}
+              className={`nav-item ${
+                activeMenu === label ? "active" : ""
+              } ${cls || ""} ${
+                label === "Market Dashboard" ? "with-arrow" : ""
+              }`}
+              onClick={() => {
+                if (label === "Market Dashboard") {
+                  setDashboardOpen(!dashboardOpen);
+                } else {
+                  setActiveMenu(label);
+                }
+              }}
+            >
+              <Icon>{ico}</Icon>
+
+              <span>{label}</span>
+
+              {label === "Market Dashboard" && (
+                <em className={dashboardOpen ? "arrow-open" : ""}>
+                  ⌄
+                </em>
+              )}
+            </div>
+          );
+        })}
+
       </div>
+
       <div className="quote-card">
-        <div>“The best time to prepare for the market is before the event.”</div>
+        <div>
+          “The best time to prepare for the market is before the event.”
+        </div>
+
         <div className="quote-mark">↗</div>
       </div>
     </aside>
