@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import "./App.css";
-const API_BASE =
-  "https://commoditytrack-production-5160.up.railway.app";
+
+// Railway Backend Production API URL
+const API_BASE = "https://commoditytrack-production-2084.up.railway.app";
 
 const news = [
   ["🏛️", "US CPI inflation remains elevated, keeps Fed rate cut hopes alive", "2 hours ago", "Reuters", "Positive", "Gold ↑", "Silver ↑"],
@@ -54,7 +55,6 @@ function MiniLine({ data = [] }) {
   }
 
   const prices = data.map((item) => Number(item.price));
-
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const range = max - min || 1;
@@ -63,17 +63,12 @@ function MiniLine({ data = [] }) {
     .map((price, index) => {
       const x = (index / (prices.length - 1)) * 150;
       const y = 50 - ((price - min) / range) * 40;
-
       return `${x},${y}`;
     })
     .join(" ");
 
   return (
-    <svg
-      viewBox="0 0 150 55"
-      className="mini-line"
-      preserveAspectRatio="none"
-    >
+    <svg viewBox="0 0 150 55" className="mini-line" preserveAspectRatio="none">
       <polyline
         points={points}
         fill="none"
@@ -83,6 +78,7 @@ function MiniLine({ data = [] }) {
     </svg>
   );
 }
+
 function CandleChart({ silver = false }) {
   const bars = [
     [8,34,20],[20,30,28],[32,26,36],[44,31,41],[56,22,34],[68,24,44],[80,18,37],
@@ -127,7 +123,6 @@ function Topbar() {
     <header className="topbar">
       <div className="brand">
         <div className="brand-mark">↗</div>
-
         <div>
           <div className="brand-title">Gold &amp; Silver</div>
           <div className="brand-subtitle">Market Intelligence</div>
@@ -155,12 +150,10 @@ function Topbar() {
 
         <div className="user">
           <div className="avatar">S</div>
-
           <div>
             <strong>Santanu</strong>
             <small>Free Plan</small>
           </div>
-
           <span>⌄</span>
         </div>
       </div>
@@ -189,13 +182,8 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="nav-group">
-
         {menuItems.map(([ico, label, cls], i) => {
-
-          // Gold / Silver
-          if (cls === "sub" && !dashboardOpen) {
-            return null;
-          }
+          if (cls === "sub" && !dashboardOpen) return null;
 
           return (
             <div
@@ -214,25 +202,19 @@ function Sidebar() {
               }}
             >
               <Icon>{ico}</Icon>
-
               <span>{label}</span>
-
               {label === "Market Dashboard" && (
-                <em className={dashboardOpen ? "arrow-open" : ""}>
-                  ⌄
-                </em>
+                <em className={dashboardOpen ? "arrow-open" : ""}>⌄</em>
               )}
             </div>
           );
         })}
-
       </div>
 
       <div className="quote-card">
         <div>
           “The best time to prepare for the market is before the event.”
         </div>
-
         <div className="quote-mark">↗</div>
       </div>
     </aside>
@@ -263,17 +245,15 @@ function AssetCard({ silver = false }) {
         setMarket(priceData);
 
         const rows = historyData.data || [];
-
         setHistory([...rows].reverse());
-
       } catch (error) {
         console.error(`${metal} market error:`, error);
       }
     };
 
     fetchData();
-
-    const interval = setInterval(fetchData, 60000);
+    // 5 seconds intervals for live Binance feeds
+    const interval = setInterval(fetchData, 5000);
 
     return () => clearInterval(interval);
   }, [silver]);
@@ -281,30 +261,23 @@ function AssetCard({ silver = false }) {
   const price = Number(market?.price || 0);
 
   const change =
-    market?.change_percent !== null &&
-    market?.change_percent !== undefined
+    market?.change_percent !== null && market?.change_percent !== undefined
       ? Number(market.change_percent)
       : null;
 
   return (
     <div className="asset-card">
-
-      <div
-        className={`metal-icon ${
-          silver ? "silver-metal" : ""
-        }`}
-      >
+      <div className={`metal-icon ${silver ? "silver-metal" : ""}`}>
         ▰
       </div>
 
       <div className="asset-copy">
-
         <div className="asset-name">
           {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
         </div>
 
         <div className="asset-price">
-          {market
+          {market && price > 0
             ? `$${price.toLocaleString("en-US", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
@@ -327,14 +300,13 @@ function AssetCard({ silver = false }) {
             ? "—"
             : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
         </div>
-
       </div>
 
       <MiniLine data={history} />
-
     </div>
   );
 }
+
 function ReportsCard() {
   return (
     <div className="reports-card">
@@ -358,22 +330,15 @@ function Calendar() {
         setLoading(true);
         setError("");
 
-        console.log(`Fetching events for ${days} days...`);
-
         const response = await fetch(
-          `https://commoditytrack-production-5160.up.railway.app/api/events/upcoming?days=${days}`
+          `${API_BASE}/api/events/upcoming?days=${days}`
         );
-
-        console.log("API response:", response.status);
 
         if (!response.ok) {
           throw new Error(`API Error: ${response.status}`);
         }
 
         const data = await response.json();
-
-        console.log("Economic events:", data);
-
         setEvents(data.events || []);
       } catch (err) {
         console.error("Economic calendar error:", err);
@@ -388,9 +353,7 @@ function Calendar() {
 
   const formatDate = (dateString) => {
     if (!dateString) return "—";
-
     const date = new Date(`${dateString}T00:00:00`);
-
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -400,9 +363,7 @@ function Calendar() {
 
   const formatTime = (eventTime) => {
     if (!eventTime) return "—";
-
     const date = new Date(eventTime);
-
     return date.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
@@ -411,27 +372,18 @@ function Calendar() {
   };
 
   const formatValue = (value) => {
-    if (value === null || value === undefined) {
-      return "—";
-    }
-
+    if (value === null || value === undefined) return "—";
     return value;
   };
 
   const formatImpact = (impact) => {
     if (!impact) return "Neutral";
-
-    return (
-      impact.charAt(0).toUpperCase() +
-      impact.slice(1).toLowerCase()
-    );
+    return impact.charAt(0).toUpperCase() + impact.slice(1).toLowerCase();
   };
 
   return (
     <section className="panel calendar-panel">
-
       <div className="panel-head">
-
         <div className="section-title">
           ▣ <span>Economic Calendar</span>
         </div>
@@ -451,13 +403,10 @@ function Calendar() {
         >
           {days === 7 ? "View All →" : "View 7 Days →"}
         </a>
-
       </div>
 
       <div className="table-wrap">
-
         <table>
-
           <thead>
             <tr>
               <th>Date</th>
@@ -473,7 +422,6 @@ function Calendar() {
           </thead>
 
           <tbody>
-
             {loading && (
               <tr>
                 <td colSpan="9" style={{ textAlign: "center" }}>
@@ -484,13 +432,7 @@ function Calendar() {
 
             {!loading && error && (
               <tr>
-                <td
-                  colSpan="9"
-                  style={{
-                    textAlign: "center",
-                    color: "#ff4962",
-                  }}
-                >
+                <td colSpan="9" style={{ textAlign: "center", color: "#ff4962" }}>
                   {error}
                 </td>
               </tr>
@@ -508,48 +450,32 @@ function Calendar() {
               !error &&
               events.map((event) => (
                 <tr key={event.id}>
-
                   <td>{formatDate(event.date)}</td>
-
                   <td>{formatTime(event.event_time)}</td>
-
-                  <td>
-                    <strong>{event.event}</strong>
-                  </td>
-
+                  <td><strong>{event.event}</strong></td>
                   <td>{formatValue(event.previous)}</td>
-
                   <td>{formatValue(event.forecast)}</td>
-
                   <td>{formatValue(event.actual)}</td>
-
                   <td>
                     <Badge type={formatImpact(event.impact)}>
                       {formatImpact(event.impact)}
                     </Badge>
                   </td>
-
                   <td>
                     <Badge type={event.gold_effect}>
                       {event.gold_effect || "Neutral"}
                     </Badge>
                   </td>
-
                   <td>
                     <Badge type={event.silver_effect}>
                       {event.silver_effect || "Neutral"}
                     </Badge>
                   </td>
-
                 </tr>
               ))}
-
           </tbody>
-
         </table>
-
       </div>
-
     </section>
   );
 }
@@ -574,26 +500,16 @@ function MarketOverview() {
 
       <div className="chart-grid">
         {[false, true].map((silver) => (
-          <div
-            className="chart-card"
-            key={silver ? "silver" : "gold"}
-          >
+          <div className="chart-card" key={silver ? "silver" : "gold"}>
             <div className="chart-top">
               <div>
                 <div className="chart-name">
                   {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
                 </div>
-
-                <strong>
-                  {silver ? "$52.31" : "$4,356.82"}
-                </strong>
-
-                <span>
-                  +{silver ? "1.59%" : "0.43%"}
-                </span>
+                <strong>{silver ? "$52.31" : "$4,356.82"}</strong>
+                <span>+{silver ? "1.59%" : "0.43%"}</span>
               </div>
             </div>
-
             <CandleChart silver={silver} />
           </div>
         ))}

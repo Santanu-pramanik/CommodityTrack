@@ -15,7 +15,7 @@ def collect_market_data():
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
 
-        # 1. Gold Price from Binance (PAXG/USDT)
+        # 1. Gold Price (PAXG/USDT from Binance)
         try:
             gold_res = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=PAXGUSDT", timeout=10).json()
             gold_price = float(gold_res["lastPrice"])
@@ -34,22 +34,28 @@ def collect_market_data():
         except Exception as e:
             print(f"Error collecting GOLD: {e}")
 
-        # 2. Silver Price from Binance (XAG/USDT)
+        # 2. Silver Price (XAG/USDT from Binance)
         try:
             silver_res = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=XAGUSDT", timeout=10).json()
-            silver_price = float(silver_res["lastPrice"])
-            silver_change = float(silver_res["priceChangePercent"])
-            silver_volume = float(silver_res["volume"])
-            timestamp = datetime.now(timezone.utc)
+            
+            # Check if API returned valid data
+            if "lastPrice" in silver_res:
+                silver_price = float(silver_res["lastPrice"])
+                silver_change = float(silver_res.get("priceChangePercent", 0.0)) # Percentage change
+                silver_volume = float(silver_res.get("volume", 0.0))
+                timestamp = datetime.now(timezone.utc)
 
-            cursor.execute(
-                """
-                INSERT INTO global_metals (metal_type, symbol, price, timestamp, created_at, change_percent, volume, source)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                ("SILVER", "XAG/USDT", silver_price, timestamp, timestamp, silver_change, silver_volume, "Binance API")
-            )
-            print(f"SILVER: ${silver_price:.2f} ({silver_change:+.2f}%)")
+                cursor.execute(
+                    """
+                    INSERT INTO global_metals (metal_type, symbol, price, timestamp, created_at, change_percent, volume, source)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    ("SILVER", "XAG/USDT", silver_price, timestamp, timestamp, silver_change, silver_volume, "Binance API")
+                )
+                print(f"SILVER: ${silver_price:.2f} ({silver_change:+.2f}%)")
+            else:
+                print("Silver data key missing in response")
+
         except Exception as e:
             print(f"Error collecting SILVER: {e}")
 
