@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "./App.css";
+const API_BASE =
+  "https://commoditytrack-production-5160.up.railway.app";
 
 const news = [
   ["🏛️", "US CPI inflation remains elevated, keeps Fed rate cut hopes alive", "2 hours ago", "Reuters", "Positive", "Gold ↑", "Silver ↑"],
