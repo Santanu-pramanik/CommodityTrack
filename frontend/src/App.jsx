@@ -40,24 +40,47 @@ function Icon({ children }) {
   return <span className="icon">{children}</span>;
 }
 
-function MiniLine({ silver = false }) {
-  const points = silver
-    ? "0,50 10,45 20,49 30,40 40,37 50,42 60,30 70,32 80,24 90,29 100,20 110,25 120,13 130,18 140,8 150,18"
-    : "0,50 10,43 20,49 30,31 40,38 50,21 60,32 70,24 80,28 90,14 100,25 110,18 120,7 130,17 140,4 150,14";
+function MiniLine({ data = [] }) {
+  if (!data || data.length < 2) {
+    return (
+      <svg
+        viewBox="0 0 150 55"
+        className="mini-line"
+        preserveAspectRatio="none"
+      />
+    );
+  }
+
+  const prices = data.map((item) => Number(item.price));
+
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+
+  const points = prices
+    .map((price, index) => {
+      const x = (index / (prices.length - 1)) * 150;
+      const y = 50 - ((price - min) / range) * 40;
+
+      return `${x},${y}`;
+    })
+    .join(" ");
+
   return (
-    <svg viewBox="0 0 150 55" className="mini-line" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={silver ? "sg" : "gg"} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#00d49a" stopOpacity=".25"/>
-          <stop offset="100%" stopColor="#00d49a" stopOpacity="0"/>
-        </linearGradient>
-      </defs>
-      <polyline points={points} fill="none" stroke="#00e6a8" strokeWidth="2.4" />
-      <polygon points={`${points} 150,55 0,55`} fill={`url(#${silver ? "sg" : "gg"})`} />
+    <svg
+      viewBox="0 0 150 55"
+      className="mini-line"
+      preserveAspectRatio="none"
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke="#00e6a8"
+        strokeWidth="2.4"
+      />
     </svg>
   );
 }
-
 function CandleChart({ silver = false }) {
   const bars = [
     [8,34,20],[20,30,28],[32,26,36],[44,31,41],[56,22,34],[68,24,44],[80,18,37],
@@ -215,19 +238,93 @@ function Sidebar() {
 }
 
 function AssetCard({ silver = false }) {
+  const [market, setMarket] = useState(null);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    const metal = silver ? "silver" : "gold";
+
+    const fetchData = async () => {
+      try {
+        const [priceResponse, historyResponse] = await Promise.all([
+          fetch(`${API_BASE}/api/market/${metal}`),
+          fetch(`${API_BASE}/api/market/history/${metal}?limit=30`),
+        ]);
+
+        if (!priceResponse.ok || !historyResponse.ok) {
+          throw new Error("Market API error");
+        }
+
+        const priceData = await priceResponse.json();
+        const historyData = await historyResponse.json();
+
+        setMarket(priceData);
+
+        const rows =
+          historyData.data ||
+          historyData.history ||
+          historyData ||
+          [];
+
+        setHistory([...rows].reverse());
+      } catch (error) {
+        console.error(`${metal} market error:`, error);
+      }
+    };
+
+    fetchData();
+
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchData, 60000);
+
+    return () => clearInterval(interval);
+  }, [silver]);
+
+  const price = Number(market?.price || 0);
+  const change = Number(market?.change_percent || 0);
+
   return (
     <div className="asset-card">
-      <div className={`metal-icon ${silver ? "silver-metal" : ""}`}>{silver ? "▰" : "▰"}</div>
-      <div className="asset-copy">
-        <div className="asset-name">{silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}</div>
-        <div className="asset-price">{silver ? "$52.31" : "$4,356.82"}</div>
-        <div className="asset-change">+{silver ? "0.82 (+1.59%)" : "18.46 (+0.43%)"}</div>
+      <div
+        className={`metal-icon ${
+          silver ? "silver-metal" : ""
+        }`}
+      >
+        ▰
       </div>
-      <MiniLine silver={silver}/>
+
+      <div className="asset-copy">
+
+        <div className="asset-name">
+          {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
+        </div>
+
+        <div className="asset-price">
+          {market
+            ? `$${price.toLocaleString("en-US", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}`
+            : "Loading..."}
+        </div>
+
+        <div
+          className="asset-change"
+          style={{
+            color: change >= 0 ? "#00e6a8" : "#ff4962",
+          }}
+        >
+          {market
+            ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`
+            : "—"}
+        </div>
+
+      </div>
+
+      <MiniLine data={history} />
     </div>
   );
 }
-
 function ReportsCard() {
   return (
     <div className="reports-card">
