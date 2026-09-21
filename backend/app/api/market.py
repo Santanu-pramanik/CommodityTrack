@@ -32,11 +32,11 @@ def fetch_market_data_from_db():
     Returns: dict or None
     """
     if not DATABASE_URL:
-        print("❌ DATABASE_URL not configured")
+        print(" DATABASE_URL not configured")
         return None
 
     try:
-        print(f"[{datetime.now()}] 🔄 Fetching market data from DB...")
+        print(f"[{datetime.now()}] Fetching market data from DB...")
         
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -60,10 +60,10 @@ def fetch_market_data_from_db():
         conn.close()
 
         if not rows:
-            print("⚠️ No data found in database")
+            print("No data found in database")
             return None
 
-        print(f"✅ Rows fetched: {len(rows)}")
+        print(f"Rows fetched: {len(rows)}")
 
         # Parse data
         result = {
@@ -98,13 +98,13 @@ def fetch_market_data_from_db():
 
             if row['metal_type'].upper() == "GOLD":
                 result["gold"] = data
-                print(f"   💛 Gold: ${data['price']}")
+                print(f" Gold: ${data['price']}")
 
             elif row['metal_type'].upper() == "SILVER":
                 result["silver"] = data
-                print(f"   ⚪ Silver: ${data['price']}")
+                print(f" Silver: ${data['price']}")
 
-        print(f"✅ Market data ready\n")
+        print(f"Market data ready\n")
         
         # Broadcast to WebSocket clients (async in background)
         try:
@@ -116,7 +116,7 @@ def fetch_market_data_from_db():
         return result
 
     except Exception as e:
-        print(f"❌ Error fetching market data: {str(e)}")
+        print(f"Error fetching market data: {str(e)}")
         return None
 
 # ============================================================================
@@ -130,7 +130,7 @@ async def broadcast_to_websockets(data: dict):
     if not connected_clients:
         return  # No clients connected
     
-    print(f"📡 Broadcasting to {len(connected_clients)} WebSocket clients...")
+    print(f"Broadcasting to {len(connected_clients)} WebSocket clients...")
     
     disconnected = set()
     
@@ -142,7 +142,7 @@ async def broadcast_to_websockets(data: dict):
                 "timestamp": datetime.now().isoformat()
             })
         except Exception as e:
-            print(f"⚠️ Error sending to WebSocket: {e}")
+            print(f"Error sending to WebSocket: {e}")
             disconnected.add(client)
     
     # Remove dead connections
@@ -150,7 +150,7 @@ async def broadcast_to_websockets(data: dict):
         connected_clients.discard(client)
     
     if disconnected:
-        print(f"🗑️ Removed {len(disconnected)} disconnected clients")
+        print(f"Removed {len(disconnected)} disconnected clients")
 
 @router.websocket("/ws/market")
 async def websocket_endpoint(websocket: WebSocket):
@@ -161,7 +161,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connected_clients.add(websocket)
     
-    print(f"✅ WebSocket client connected. Total: {len(connected_clients)}")
+    print(f"WebSocket client connected. Total: {len(connected_clients)}")
     
     try:
         # Send initial data
@@ -192,10 +192,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
             
     except Exception as e:
-        print(f"⚠️ WebSocket error: {e}")
+        print(f"WebSocket error: {e}")
     finally:
         connected_clients.discard(websocket)
-        print(f"❌ WebSocket client disconnected. Total: {len(connected_clients)}")
+        print(f"WebSocket client disconnected. Total: {len(connected_clients)}")
 
 # ============================================================================
 # REST ENDPOINTS
