@@ -27,6 +27,15 @@ const speeches = [
   },
 ];
 
+function getTodayFormatted() {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function Icon({ children }) {
   return <span className="icon">{children}</span>;
 }
@@ -93,21 +102,40 @@ function Topbar() {
     <header className="topbar">
       <div className="brand">
         <div className="brand-mark">↗</div>
+
         <div>
           <div className="brand-title">Gold &amp; Silver</div>
           <div className="brand-subtitle">Market Intelligence</div>
         </div>
       </div>
+
       <div className="search">
         <span>⌕</span>
         <input placeholder="Search reports, events, or assets..." />
       </div>
+
       <div className="top-actions">
-        <div className="date-box">▣ <span>Mon, 15 Sep 2026<br/><small>(Today)</small></span></div>
-        <div className="bell">♧<b>3</b></div>
+        <div className="date-box">
+          ▣
+          <span>
+            {getTodayFormatted()}
+            <br />
+            <small>(Today)</small>
+          </span>
+        </div>
+
+        <div className="bell">
+          ♧<b>3</b>
+        </div>
+
         <div className="user">
           <div className="avatar">S</div>
-          <div><strong>Santanu</strong><small>Free Plan</small></div>
+
+          <div>
+            <strong>Santanu</strong>
+            <small>Free Plan</small>
+          </div>
+
           <span>⌄</span>
         </div>
       </div>
@@ -185,7 +213,7 @@ function Calendar() {
         console.log(`Fetching events for ${days} days...`);
 
         const response = await fetch(
-          "https://commoditytrack-production-5160.up.railway.app/api/events/upcoming"
+          `https://commoditytrack-production-5160.up.railway.app/api/events/upcoming?days=${days}`
         );
 
         console.log("API response:", response.status);

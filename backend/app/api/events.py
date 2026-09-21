@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query
 import os
 import psycopg2
 from dotenv import load_dotenv
-
+from fastapi import Query
 
 load_dotenv()
 
@@ -115,6 +115,7 @@ def get_events(days: int = Query(7, ge=1, le=30)):
 # =========================================================
 
 @router.get("/events/upcoming")
-def get_upcoming_events():
-
-    return get_events(days=7)
+def get_upcoming_events(
+    days: int = Query(7, ge=1, le=30)
+):
+    return get_events(days=days)
