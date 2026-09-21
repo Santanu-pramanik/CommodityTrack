@@ -1,118 +1,59 @@
-import yfinance as yf
 import psycopg2
+import requests
 from datetime import datetime, timezone
 from app.config import DATABASE_URL
 
 
 def collect_market_data():
-
     if not DATABASE_URL:
         print("DATABASE_URL not configured")
         return
 
     try:
-        print(f"[{datetime.now()}] Collecting market data...")
-
-        symbols = {
-            "GOLD": "GC=F",
-            "SILVER": "SI=F"
-        }
+        print(f"[{datetime.now()}] Collecting live market data...")
 
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
 
-        for metal_type, symbol in symbols.items():
+        # 1. Gold Price from Binance (PAXG/USDT)
+        try:
+            gold_res = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=PAXGUSDT", timeout=10).json()
+            gold_price = float(gold_res["lastPrice"])
+            gold_change = float(gold_res["priceChangePercent"])
+            gold_volume = float(gold_res["volume"])
+            timestamp = datetime.now(timezone.utc)
 
-            try:
-                ticker = yf.Ticker(symbol)
+            cursor.execute(
+                """
+                INSERT INTO global_metals (metal_type, symbol, price, timestamp, created_at, change_percent, volume, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                ("GOLD", "PAXG/USDT", gold_price, timestamp, timestamp, gold_change, gold_volume, "Binance API")
+            )
+            print(f"GOLD: ${gold_price:.2f} ({gold_change:+.2f}%)")
+        except Exception as e:
+            print(f"Error collecting GOLD: {e}")
 
-                history = ticker.history(
-                    period="1d",
-                    interval="1m"
-                )
+        # 2. Silver Price from Binance (XAG/USDT)
+        try:
+            silver_res = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=XAGUSDT", timeout=10).json()
+            silver_price = float(silver_res["lastPrice"])
+            silver_change = float(silver_res["priceChangePercent"])
+            silver_volume = float(silver_res["volume"])
+            timestamp = datetime.now(timezone.utc)
 
-                if history.empty:
-                    print(f"No data for {symbol}")
-                    continue
-
-                latest = history.iloc[-1]
-
-                price = float(latest["Close"])
-
-                # Previous close
-                previous_close = None
-
-                try:
-                    previous_close = ticker.fast_info.get("previous_close")
-                except Exception:
-                    pass
-
-                change_percent = None
-
-                if previous_close:
-                    change_percent = (
-                        (price - float(previous_close))
-                        / float(previous_close)
-                    ) * 100
-
-                # Volume
-                volume = None
-
-                try:
-                    if latest["Volume"]:
-                        volume = float(latest["Volume"])
-                except Exception:
-                    pass
-
-                timestamp = datetime.now(timezone.utc)
-
-                cursor.execute(
-                    """
-                    INSERT INTO global_metals
-                    (
-                        metal_type,
-                        symbol,
-                        price,
-                        timestamp,
-                        created_at,
-                        change_percent,
-                        volume,
-                        source
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        metal_type,
-                        symbol,
-                        price,
-                        timestamp,
-                        timestamp,
-                        change_percent,
-                        volume,
-                        "Yahoo Finance"
-                    )
-                )
-
-                if change_percent is not None:
-                    print(
-                        f"{metal_type}: "
-                        f"${price:.2f} "
-                        f"({change_percent:+.2f}%)"
-                    )
-                else:
-                    print(
-                        f"{metal_type}: "
-                        f"${price:.2f}"
-                    )
-
-            except Exception as metal_error:
-                print(
-                    f"Error collecting {metal_type}: "
-                    f"{metal_error}"
-                )
+            cursor.execute(
+                """
+                INSERT INTO global_metals (metal_type, symbol, price, timestamp, created_at, change_percent, volume, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                ("SILVER", "XAG/USDT", silver_price, timestamp, timestamp, silver_change, silver_volume, "Binance API")
+            )
+            print(f"SILVER: ${silver_price:.2f} ({silver_change:+.2f}%)")
+        except Exception as e:
+            print(f"Error collecting SILVER: {e}")
 
         conn.commit()
-
         cursor.close()
         conn.close()
 
