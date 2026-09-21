@@ -314,57 +314,74 @@ async def get_price_history(metal_type: str, limit: int = 30):
     Get price history for a metal (GOLD or SILVER)
     Endpoint: GET /api/market/history/gold?limit=30
     """
+
     if not DATABASE_URL:
-        raise HTTPException(status_code=500, detail="DATABASE_URL not configured")
+        raise HTTPException(
+            status_code=500,
+            detail="DATABASE_URL not configured"
+        )
 
     if limit > 365:
-        limit = 365  # Max 1 year
+        limit = 365
 
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         query = """
-            SELECT 
+            SELECT
                 metal_type,
                 symbol,
                 price,
                 change_percent,
                 timestamp,
                 source
-            FROM latest_metal_prices 
+            FROM global_metals
             WHERE UPPER(metal_type) = %s
             ORDER BY timestamp DESC
             LIMIT %s;
         """
-        
-        cursor.execute(query, (metal_type.upper(), limit))
+
+        cursor.execute(
+            query,
+            (metal_type.upper(), limit)
+        )
+
         rows = cursor.fetchall()
+
+        data = [
+            {
+                "price": float(row["price"]),
+                "change_percent": (
+                    float(row["change_percent"])
+                    if row["change_percent"] is not None
+                    else None
+                ),
+                "timestamp": (
+                    row["timestamp"].isoformat()
+                    if row["timestamp"]
+                    else None
+                ),
+                "source": row["source"]
+            }
+            for row in rows
+        ]
+
         cursor.close()
         conn.close()
-        
-        if not rows:
-            raise HTTPException(status_code=404, detail=f"No price history found for {metal_type}")
-        
+
         return {
             "metal_type": metal_type.upper(),
             "limit": limit,
-            "total": len(rows),
-            "data": [
-                {
-                    "price": float(row['price']) if row['price'] else None,
-                    "change_percent": float(row['change_percent']) if row['change_percent'] else None,
-                    "timestamp": row['timestamp'].isoformat() if row['timestamp'] else None,
-                    "source": row['source'] or "unknown"
-                }
-                for row in rows
-            ]
+            "total": len(data),
+            "data": data
         }
-    
-    except HTTPException:
-        raise
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @router.get("/stats")
 async def get_market_stats():

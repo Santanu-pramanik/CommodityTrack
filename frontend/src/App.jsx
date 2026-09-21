@@ -311,12 +311,20 @@ function AssetCard({ silver = false }) {
         <div
           className="asset-change"
           style={{
-            color: change >= 0 ? "#00e6a8" : "#ff4962",
+            color:
+
+            market?.change_percent == null
+              ? "#9aa4b2"
+              : change >= 0
+              ? "#00e6a8"
+              : "#ff4962",
           }}
         >
           {market
-            ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`
-            : "—"}
+            ? market.change_percent == null
+              ? "—"
+              : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`
+            : "Loading..."}
         </div>
 
       </div>
