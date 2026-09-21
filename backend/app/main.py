@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from app.config import scheduler, settings
 from app.services.news_collector import collect_news
 from app.services.market_collector import collect_market_data
+from app.services.event_collector import collect_events
 
 
 @asynccontextmanager
@@ -21,8 +22,11 @@ async def lifespan(app: FastAPI):
 
     try:
         # Run market collection immediately
-        print("📊 Running initial market data collection...")
+        print("Running initial market data collection...")
         collect_market_data()
+        print("Running initial 30-day economic event collection...")
+        collect_events()
+        
 
         # News update job
         scheduler.add_job(
@@ -31,6 +35,14 @@ async def lifespan(app: FastAPI):
             seconds=settings.NEWS_UPDATE_INTERVAL,
             id="news_data_update",
             name="News Data Update",
+            replace_existing=True
+        )
+        scheduler.add_job(
+            collect_events,
+            "interval",
+            days=7,
+            id="economic_events_update",
+            name="Economic Events Update",
             replace_existing=True
         )
 

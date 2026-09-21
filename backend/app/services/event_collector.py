@@ -5,133 +5,94 @@ import psycopg2
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
-
-# =========================================================
-# CONFIG
-# =========================================================
-
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-FOREX_FACTORY_JSON = (
-    "https://nfs.faireconomy.media/"
-    "ff_calendar_thisweek.json"
+# FinanceCalendar API
+CALENDAR_API = (
+    "https://www.financecalendar.com/wp-json/fc/v1/calendar"
 )
 
-SOURCE_NAME = "Forex Factory"
+SOURCE_NAME = "FinanceCalendar"
 
-DAYS_AHEAD = 7
+# Next 30 days
+DAYS_AHEAD = 30
 
-
-# =========================================================
-# IMPORTANT EVENTS
-# =========================================================
 
 IMPORTANT_KEYWORDS = [
     "fed",
     "fomc",
     "interest rate",
     "federal funds",
-
     "cpi",
     "consumer price index",
     "inflation",
-
     "ppi",
     "producer price index",
-
     "nonfarm payroll",
     "non-farm payroll",
     "payrolls",
-
     "unemployment",
     "jobless claims",
-
     "gdp",
-
     "pce",
     "core pce",
-
     "retail sales",
-
     "ism manufacturing",
     "ism services",
-
     "consumer confidence",
     "consumer sentiment",
-
     "powell",
     "fomc minutes",
+    "jolts",
+    "employment",
 ]
 
 
-# =========================================================
-# DATE RANGE
-# =========================================================
-
-def get_date_range(days=7):
-
-    today = datetime.now(timezone.utc).date()
-
-    end_date = today + timedelta(days=days)
-
-    return today, end_date
-
-
-# =========================================================
-# DATABASE
-# =========================================================
-
 def get_connection():
-
     if not DATABASE_URL:
-        raise ValueError(
-            "DATABASE_URL not found in .env"
-        )
+        raise ValueError("DATABASE_URL not found in .env")
 
     return psycopg2.connect(DATABASE_URL)
 
 
-# =========================================================
-# FETCH FOREX FACTORY
-# =========================================================
+def clean_numeric(value):
 
-def fetch_forex_factory():
+    if value is None:
+        return None
 
-    print("=" * 60)
-    print("Fetching Forex Factory Economic Calendar")
-    print("=" * 60)
+    value = str(value).strip()
 
-    headers = {
-        "User-Agent":
-            "Mozilla/5.0 "
-            "(Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/153.0 Safari/537.36"
-    }
+    if value == "":
+        return None
 
-    response = requests.get(
-        FOREX_FACTORY_JSON,
-        headers=headers,
-        timeout=30
-    )
+    try:
+        value = value.replace(",", "")
+        value = value.replace("%", "")
 
-    response.raise_for_status()
+        multiplier = 1
 
-    data = response.json()
+        if value.upper().endswith("K"):
+            multiplier = 1000
+            value = value[:-1]
 
-    print(
-        f"[OK] JSON events received: {len(data)}"
-    )
+        elif value.upper().endswith("M"):
+            multiplier = 1000000
+            value = value[:-1]
 
-    return data
+        elif value.upper().endswith("B"):
+            multiplier = 1000000000
+            value = value[:-1]
 
+        return float(value) * multiplier
 
-# =========================================================
-# DATE PARSER
-# =========================================================
+    except ValueError:
+
+        print(f"[NUMERIC ERROR] Cannot convert: {value}")
+
+        return None
+
 
 def parse_event_time(date_string):
 
@@ -141,18 +102,13 @@ def parse_event_time(date_string):
     try:
 
         dt = datetime.fromisoformat(
-            str(date_string)
+            str(date_string).replace("Z", "+00:00")
         )
 
         if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
 
-            dt = dt.replace(
-                tzinfo=timezone.utc
-            )
-
-        return dt.astimezone(
-            timezone.utc
-        )
+        return dt.astimezone(timezone.utc)
 
     except Exception as error:
 
@@ -164,77 +120,124 @@ def parse_event_time(date_string):
         return None
 
 
-# =========================================================
-# EVENT FILTER
-# =========================================================
-
 def is_relevant_event(event):
-    country = (event.get("country") or "").upper()
-    title = (event.get("title") or "").lower()
 
-    if country != "USD":
+    # FinanceCalendar normally provides country/currency
+    country = (
+        event.get("country")
+        or event.get("currency")
+        or ""
+    ).upper()
+
+    title = (
+        event.get("title")
+        or event.get("name")
+        or event.get("event")
+        or ""
+    ).lower()
+
+    # We mainly want USD events
+    if country not in ["US", "USD"]:
         return False
 
-    keywords = [
-        "fed",
-        "fomc",
-        "interest rate",
-        "federal funds",
-        "cpi",
-        "consumer price index",
-        "inflation",
-        "ppi",
-        "producer price index",
-        "nonfarm payroll",
-        "non-farm payroll",
-        "payrolls",
-        "unemployment",
-        "jobless claims",
-        "adp",
-        "employment",
-        "gdp",
-        "pce",
-        "core pce",
-        "retail sales",
-        "ism manufacturing",
-        "ism services",
-        "consumer confidence",
-        "consumer sentiment",
-        "powell",
-        "goolsbee",
-        "williams",
-        "jefferson",
-        "fomc minutes",
-        "manufacturing index",
-    ]
+    return any(
+        keyword in title
+        for keyword in IMPORTANT_KEYWORDS
+    )
 
-    return any(keyword in title for keyword in keywords)
-
-# =========================================================
-# METAL IMPACT
-# =========================================================
 
 def get_metal_impact(event_name):
 
-    # Directional impact will be calculated later
-    # using historical market reaction.
-
+    # Initial value.
+    # Later we will calculate this from
+    # historical gold/silver reaction.
     return "NEUTRAL"
 
-# =========================================================
-# NORMALIZE EVENT
-# =========================================================
+
+def fetch_calendar():
+
+    today = datetime.now(timezone.utc).date()
+
+    end_date = today + timedelta(
+        days=DAYS_AHEAD
+    )
+
+    url = (
+        f"{CALENDAR_API}"
+        f"?from={today.isoformat()}"
+        f"&to={end_date.isoformat()}"
+        f"&limit=500"
+    )
+
+    print("=" * 60)
+    print("Fetching 30-Day Economic Calendar")
+    print("=" * 60)
+
+    print(f"From: {today}")
+    print(f"To  : {end_date}")
+
+    headers = {
+        "User-Agent":
+            "Mozilla/5.0 "
+            "(Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/153.0 Safari/537.36"
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    result = response.json()
+
+    # API may return either a list
+    # or an object containing events
+    if isinstance(result, list):
+
+        events = result
+
+    elif isinstance(result, dict):
+
+        events = (
+            result.get("events")
+            or result.get("data")
+            or []
+        )
+
+    else:
+
+        events = []
+
+    print(
+        f"[OK] Calendar events received: "
+        f"{len(events)}"
+    )
+
+    return events
+
 
 def normalize_event(raw_event):
 
-    event_name = raw_event.get("title")
+    event_name = (
+        raw_event.get("title")
+        or raw_event.get("name")
+        or raw_event.get("event")
+    )
 
-    country = raw_event.get("country")
-
-    impact = raw_event.get("impact")
+    country = (
+        raw_event.get("country")
+        or raw_event.get("currency")
+    )
 
     event_time = parse_event_time(
-        raw_event.get("date")
+        raw_event.get("time_utc")
+        or raw_event.get("date")
+        or raw_event.get("datetime")
     )
 
     if not event_name:
@@ -243,18 +246,23 @@ def normalize_event(raw_event):
     if not event_time:
         return None
 
-    # Forex Factory currently provides
-    # previous and forecast as strings.
     previous_value = clean_numeric(
-    raw_event.get("previous")
-)
+        raw_event.get("previous")
+        or raw_event.get("prior")
+    )
 
     forecast_value = clean_numeric(
         raw_event.get("forecast")
+        or raw_event.get("consensus")
     )
 
     actual_value = clean_numeric(
         raw_event.get("actual")
+    )
+
+    impact = (
+        raw_event.get("impact")
+        or "MEDIUM"
     )
 
     metal_impact = get_metal_impact(
@@ -264,52 +272,36 @@ def normalize_event(raw_event):
     description = (
         f"{event_name} "
         f"({country}) "
-        f"from Forex Factory."
+        f"from {SOURCE_NAME}."
     )
 
     return {
 
-        "event_name":
-            event_name,
+        "event_name": event_name,
 
-        "event_type":
-            "ECONOMIC",
+        "event_type": "ECONOMIC",
 
-        "country":
-            country,
+        "country": country,
 
-        "event_time":
-            event_time,
+        "event_time": event_time,
 
-        "previous_value":
-            previous_value,
+        "previous_value": previous_value,
 
-        "forecast_value":
-            forecast_value,
+        "forecast_value": forecast_value,
 
-        "actual_value":
-            actual_value,
+        "actual_value": actual_value,
 
-        "unit":
-            None,
+        "unit": None,
 
-        "impact":
-            str(impact).upper(),
+        "impact": str(impact).upper(),
 
-        "gold_impact":
-            metal_impact,
+        "gold_impact": metal_impact,
 
-        "silver_impact":
-            metal_impact,
+        "silver_impact": metal_impact,
 
-        "description":
-            description
+        "description": description
     }
 
-
-# =========================================================
-# SAVE EVENT
-# =========================================================
 
 def save_event(event):
 
@@ -319,7 +311,7 @@ def save_event(event):
 
         with conn.cursor() as cursor:
 
-            # Check duplicate
+            # Check existing event
             cursor.execute(
                 """
                 SELECT id
@@ -338,12 +330,9 @@ def save_event(event):
 
             existing = cursor.fetchone()
 
-            # ---------------------------------------------
-            # UPDATE
-            # ---------------------------------------------
-
             if existing:
 
+                # UPDATE existing event
                 cursor.execute(
                     """
                     UPDATE economic_events
@@ -378,12 +367,9 @@ def save_event(event):
                     f"{event['event_name']}"
                 )
 
-            # ---------------------------------------------
-            # INSERT
-            # ---------------------------------------------
-
             else:
 
+                # INSERT new event
                 cursor.execute(
                     """
                     INSERT INTO economic_events
@@ -443,82 +429,33 @@ def save_event(event):
 
         conn.close()
 
-def clean_numeric(value):
-
-    if value is None:
-        return None
-
-    value = str(value).strip()
-
-    if value == "":
-        return None
-
-    try:
-
-        value = value.replace("%", "")
-
-        multiplier = 1
-
-        if value.upper().endswith("K"):
-            multiplier = 1000
-            value = value[:-1]
-
-        elif value.upper().endswith("M"):
-            multiplier = 1000000
-            value = value[:-1]
-
-        elif value.upper().endswith("B"):
-            multiplier = 1000000000
-            value = value[:-1]
-
-        return float(value) * multiplier
-
-    except ValueError:
-
-        print(
-            f"[NUMERIC ERROR] "
-            f"Cannot convert: {value}"
-        )
-
-        return None
-# =========================================================
-# MAIN COLLECTOR
-# =========================================================
 
 def collect_events():
 
-    today, end_date = get_date_range(
-        DAYS_AHEAD
-    )
-
     print()
-    print(
-        f"Collecting events: "
-        f"{today} -> {end_date}"
-    )
+    print("📅 Starting economic event collection...")
     print()
 
-    raw_events = fetch_forex_factory()
+    raw_events = fetch_calendar()
 
     saved = 0
     skipped = 0
 
+    today = datetime.now(
+        timezone.utc
+    ).date()
+
+    end_date = today + timedelta(
+        days=DAYS_AHEAD
+    )
+
     for raw_event in raw_events:
 
-        # ---------------------------------------------
-        # Filter
-        # ---------------------------------------------
-
-        if not is_relevant_event(
-            raw_event
-        ):
+        # USD filtering
+        if not is_relevant_event(raw_event):
 
             skipped += 1
             continue
-
-        # ---------------------------------------------
-        # Normalize
-        # ---------------------------------------------
 
         event = normalize_event(
             raw_event
@@ -528,10 +465,6 @@ def collect_events():
 
             skipped += 1
             continue
-
-        # ---------------------------------------------
-        # Date filter
-        # ---------------------------------------------
 
         event_date = (
             event["event_time"].date()
@@ -546,10 +479,6 @@ def collect_events():
             skipped += 1
             continue
 
-        # ---------------------------------------------
-        # Save
-        # ---------------------------------------------
-
         try:
 
             save_event(event)
@@ -560,8 +489,8 @@ def collect_events():
 
             print(
                 f"[DATABASE ERROR] "
-                f"{event['event_name']} -> "
-                f"{error}"
+                f"{event['event_name']} "
+                f"-> {error}"
             )
 
     print()
@@ -573,11 +502,8 @@ def collect_events():
         f"Events skipped: {skipped}"
     )
     print("=" * 60)
+    print()
 
-
-# =========================================================
-# RUN
-# =========================================================
 
 if __name__ == "__main__":
 
