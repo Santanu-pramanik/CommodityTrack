@@ -260,13 +260,10 @@ function AssetCard({ silver = false }) {
 
         setMarket(priceData);
 
-        const rows =
-          historyData.data ||
-          historyData.history ||
-          historyData ||
-          [];
+        const rows = historyData.data || [];
 
         setHistory([...rows].reverse());
+
       } catch (error) {
         console.error(`${metal} market error:`, error);
       }
@@ -274,17 +271,22 @@ function AssetCard({ silver = false }) {
 
     fetchData();
 
-    // Refresh every 60 seconds
     const interval = setInterval(fetchData, 60000);
 
     return () => clearInterval(interval);
   }, [silver]);
 
   const price = Number(market?.price || 0);
-  const change = Number(market?.change_percent || 0);
+
+  const change =
+    market?.change_percent !== null &&
+    market?.change_percent !== undefined
+      ? Number(market.change_percent)
+      : null;
 
   return (
     <div className="asset-card">
+
       <div
         className={`metal-icon ${
           silver ? "silver-metal" : ""
@@ -312,24 +314,22 @@ function AssetCard({ silver = false }) {
           className="asset-change"
           style={{
             color:
-
-            market?.change_percent == null
-              ? "#9aa4b2"
-              : change >= 0
-              ? "#00e6a8"
-              : "#ff4962",
+              change === null
+                ? "#9aa4b2"
+                : change >= 0
+                ? "#00e6a8"
+                : "#ff4962",
           }}
         >
-          {market
-            ? market.change_percent == null
-              ? "—"
-              : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`
-            : "Loading..."}
+          {change === null
+            ? "—"
+            : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
         </div>
 
       </div>
 
       <MiniLine data={history} />
+
     </div>
   );
 }
