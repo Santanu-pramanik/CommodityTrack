@@ -1,15 +1,10 @@
+import psycopg2
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import events
-from app.api import market
-from app.api import news
-from app.api import speeches
-from app.api import predictions
-from app.api import historical
-
 from contextlib import asynccontextmanager
 
-from app.config import scheduler, settings
+from app.api import events, market, news, speeches, predictions, historical
+from app.config import scheduler, settings, DATABASE_URL
 from app.services.news_collector import collect_news
 from app.services.market_collector import collect_market_data
 from app.services.event_collector import collect_events
@@ -26,7 +21,6 @@ async def lifespan(app: FastAPI):
         collect_market_data()
         print("Running initial 30-day economic event collection...")
         collect_events()
-        
 
         # News update job
         scheduler.add_job(
@@ -35,34 +29,33 @@ async def lifespan(app: FastAPI):
             seconds=settings.NEWS_UPDATE_INTERVAL,
             id="news_data_update",
             name="News Data Update",
-            replace_existing=True
+            replace_existing=True,
         )
+
+        # Economic events update job
         scheduler.add_job(
             collect_events,
             "interval",
             days=7,
             id="economic_events_update",
             name="Economic Events Update",
-            replace_existing=True
+            replace_existing=True,
         )
 
-        # Market update job
+        # Market update job (Every 5 seconds)
         scheduler.add_job(
             collect_market_data,
             "interval",
             seconds=5,
             id="market_data_update",
             name="Market Data Update",
-            replace_existing=True
+            replace_existing=True,
         )
 
         if not scheduler.running:
             scheduler.start()
 
-        print(
-            f"✅ Scheduler started - "
-            f"Market updates every {settings.MARKET_UPDATE_INTERVAL} seconds"
-        )
+        print("✅ Scheduler started successfully")
 
     except Exception as e:
         print(f"❌ Scheduler startup error: {e}")
@@ -81,7 +74,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Gold & Silver Market Intelligence",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 
@@ -91,11 +84,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://commoditytrack-production-2084.up.railway.app",
-    ],
+    allow_origins=["*"],  # Allows all origins during development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -115,19 +104,56 @@ app.include_router(historical.router)
 
 
 # ============================================================
-# ROOT
+# DIRECT MARKET API OVERRIDE (To ensure clean non-null data)
+# ============================================================
+
+@app.get("/api/market/{metal_type}")
+def get_latest_market(metal_type: str):
+    if not DATABASE_URL:
+        return {"error": "DATABASE_URL not configured"}
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+
+        # NULL ভ্যালু স্কিপ করে লেটেস্ট ভ্যালু আনার কুয়েরি
+        cursor.execute(
+            """
+            SELECT metal_type, symbol, price, change_percent, volume, timestamp 
+            FROM global_metals 
+            WHERE LOWER(metal_type) = %s AND change_percent IS NOT NULL
+            ORDER BY id DESC LIMIT 1
+            """,
+            (metal_type.lower(),),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if not row:
+            return {"error": "Data not found"}
+
+        return {
+            "metal_type": row[0],
+            "symbol": row[1],
+            "price": float(row[2]),
+            "change_percent": float(row[3]) if row[3] is not None else 0.0,
+            "volume": float(row[4]) if row[4] is not None else 0.0,
+            "timestamp": row[5],
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ============================================================
+# ROOT & HEALTH
 # ============================================================
 
 @app.get("/")
 def root():
-    return {
-        "app": "Gold & Silver Market Intelligence",
-        "status": "running"
-    }
+    return {"app": "Gold & Silver Market Intelligence", "status": "running"}
 
 
 @app.get("/health")
 def health():
-    return {
-        "status": "healthy"
-    }
+    return {"status": "healthy"}
