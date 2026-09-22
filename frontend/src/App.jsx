@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, {
+  useEffect,
+  useState,
+  useContext,
+  createContext,
+} from "react";
 import "./App.css";
 
 // Railway Backend Production API URL
 const API_BASE = "https://commoditytrack-production-5160.up.railway.app";
-
+const MarketContext = createContext(null);
 const news = [
   ["🏛️", "US CPI inflation remains elevated, keeps Fed rate cut hopes alive", "2 hours ago", "Reuters", "Positive", "Gold ↑", "Silver ↑"],
   ["🏭", "Geopolitical tensions in Middle East increase safe-haven demand", "4 hours ago", "Bloomberg", "Positive", "Gold ↑", "Silver ↑"],
@@ -79,37 +84,162 @@ function MiniLine({ data = [] }) {
   );
 }
 
-function CandleChart({ silver = false }) {
-  const bars = [
-    [8,34,20],[20,30,28],[32,26,36],[44,31,41],[56,22,34],[68,24,44],[80,18,37],
-    [92,28,49],[104,16,30],[116,20,42],[128,11,31],[140,14,26],[152,10,27],[164,13,35],
-    [176,7,20],[188,16,34],[200,12,29],[212,9,24],[224,14,31],[236,18,37],[248,12,26],
-    [260,10,22],[272,15,29],[284,9,22],[296,14,28],[308,8,19],[320,13,23],[332,10,21],
-    [344,7,18],[356,14,27]
-  ];
+function CandleChart({ data = [] }) {
+  const width = 390;
+  const height = 135;
+  const chartBottom = 118;
+  const chartTop = 6;
+
+  const candles = (Array.isArray(data) ? data : [])
+    .map((candle) => ({
+      timestamp: candle.timestamp,
+      open: Number(candle.open),
+      high: Number(candle.high),
+      low: Number(candle.low),
+      close: Number(candle.close),
+    }))
+    .filter(
+      (candle) =>
+        Number.isFinite(candle.open) &&
+        Number.isFinite(candle.high) &&
+        Number.isFinite(candle.low) &&
+        Number.isFinite(candle.close)
+    );
+
+  if (candles.length === 0) {
+    return (
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="candle-chart"
+        preserveAspectRatio="none"
+      >
+        {[20, 50, 80, 110].map((y) => (
+          <line
+            key={y}
+            x1="0"
+            y1={y}
+            x2={width}
+            y2={y}
+            className="grid"
+          />
+        ))}
+        <text x="8" y="65" className="axis-text">
+          No candle data
+        </text>
+      </svg>
+    );
+  }
+
+  const minPrice = Math.min(...candles.map((c) => c.low));
+  const maxPrice = Math.max(...candles.map((c) => c.high));
+  const priceRange = maxPrice - minPrice || 1;
+
+  const yForPrice = (price) =>
+    chartBottom -
+    ((price - minPrice) / priceRange) *
+      (chartBottom - chartTop);
+
+  const slot = width / candles.length;
+  const bodyWidth = Math.max(2, Math.min(8, slot * 0.55));
+
   return (
-    <svg viewBox="0 0 390 135" className="candle-chart" preserveAspectRatio="none">
-      {[15,45,75,105].map((y) => (<line key={y} x1="0" y1={y} x2="390" y2={y} className="grid"/>))}
-      {[35,80,125,170,215,260,305,350].map((x) => (<line key={x} x1={x} y1="0" x2={x} y2="120" className="grid"/>))}
-      {bars.map(([x, top, bottom], i) => {
-        const up = (i + (silver ? 1 : 0)) % 4 !== 0;
-        const bodyTop = Math.min(top + 7, bottom - 6);
-        const bodyBottom = Math.max(top + 12, bottom - 2);
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="candle-chart"
+      preserveAspectRatio="none"
+    >
+      {[20, 50, 80, 110].map((y) => (
+        <line
+          key={y}
+          x1="0"
+          y1={y}
+          x2={width}
+          y2={y}
+          className="grid"
+        />
+      ))}
+
+      {candles.map((candle, index) => {
+        const x = slot * index + slot / 2;
+
+        const openY = yForPrice(candle.open);
+        const closeY = yForPrice(candle.close);
+        const highY = yForPrice(candle.high);
+        const lowY = yForPrice(candle.low);
+
+        const up = candle.close >= candle.open;
+        const bodyY = Math.min(openY, closeY);
+        const bodyHeight = Math.max(
+          1.5,
+          Math.abs(closeY - openY)
+        );
+
         return (
-          <g key={i}>
-            <line x1={x+3} y1={top} x2={x+3} y2={bottom} stroke={up ? "#10d8a2" : "#ff4962"} strokeWidth="1.4"/>
-            <rect x={x} y={bodyTop} width="6" height={Math.max(5, bodyBottom-bodyTop)} rx="1"
-              fill={up ? "#10d8a2" : "#ff4962"} />
+          <g key={`${candle.timestamp}-${index}`}>
+            <line
+              x1={x}
+              y1={highY}
+              x2={x}
+              y2={lowY}
+              stroke={up ? "#10d8a2" : "#ff4962"}
+              strokeWidth="1.2"
+            />
+
+            <rect
+              x={x - bodyWidth / 2}
+              y={bodyY}
+              width={bodyWidth}
+              height={bodyHeight}
+              rx="1"
+              fill={up ? "#10d8a2" : "#ff4962"}
+            />
           </g>
         );
       })}
-      <line x1="0" y1="120" x2="390" y2="120" className="axis"/>
-      {["00:00", "06:00", "12:00", "18:00"].map((t, i) => (
-        <text key={t} x={i * 118 + 4} y="133" className="axis-text">{t}</text>
-      ))}
-      {[silver ? "53.0" : "4,380", silver ? "52.5" : "4,360", silver ? "52.0" : "4,340", silver ? "51.5" : "4,320"].map((t, i) => (
-        <text key={t} x="364" y={16+i*29} className="axis-text">{t}</text>
-      ))}
+
+      <line
+        x1="0"
+        y1={chartBottom}
+        x2={width}
+        y2={chartBottom}
+        className="axis"
+      />
+
+      {candles.length > 0 && (
+        <>
+          <text x="4" y="133" className="axis-text">
+            {new Date(candles[0].timestamp).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </text>
+
+          <text
+            x="335"
+            y="133"
+            className="axis-text"
+          >
+            {new Date(
+              candles[candles.length - 1].timestamp
+            ).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </text>
+
+          <text x="350" y="16" className="axis-text">
+            {maxPrice.toLocaleString("en-US", {
+              maximumFractionDigits: 2,
+            })}
+          </text>
+
+          <text x="350" y="113" className="axis-text">
+            {minPrice.toLocaleString("en-US", {
+              maximumFractionDigits: 2,
+            })}
+          </text>
+        </>
+      )}
     </svg>
   );
 }
@@ -161,9 +291,8 @@ function Topbar() {
   );
 }
 
-function Sidebar() {
-  const [dashboardOpen, setDashboardOpen] = React.useState(true);
-  const [activeMenu, setActiveMenu] = React.useState("Home");
+function Sidebar({ activeMenu, setActiveMenu }) {
+  const [dashboardOpen, setDashboardOpen] = useState(true);
 
   const menuItems = [
     ["⌂", "Home"],
@@ -195,7 +324,8 @@ function Sidebar() {
               }`}
               onClick={() => {
                 if (label === "Market Dashboard") {
-                  setDashboardOpen(!dashboardOpen);
+                  setDashboardOpen((prev) => !prev);
+                  setActiveMenu("Market Dashboard");
                 } else {
                   setActiveMenu(label);
                 }
@@ -221,88 +351,7 @@ function Sidebar() {
   );
 }
 
-function AssetCard({ silver = false }) {
-  const [market, setMarket] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const metal = silver ? "silver" : "gold";
-
-    let cancelled = false;
-
-    const fetchData = async () => {
-      try {
-        const priceResponse = await fetch(
-          `${API_BASE}/api/market/${metal}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        if (!priceResponse.ok) {
-          throw new Error(
-            `Price API error: ${priceResponse.status}`
-          );
-        }
-
-        const priceData = await priceResponse.json();
-
-        if (!cancelled) {
-          setMarket(priceData);
-          setError("");
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error(`${metal} price error:`, error);
-
-        if (!cancelled) {
-          setError("Unable to update price");
-
-          // Do not remove old market data.
-          setLoading(false);
-        }
-      }
-
-      try {
-        const historyResponse = await fetch(
-          `${API_BASE}/api/market/history/${metal}?limit=60`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        if (!historyResponse.ok) {
-          throw new Error(
-            `History API error: ${historyResponse.status}`
-          );
-        }
-
-        const historyData = await historyResponse.json();
-
-        const rows = Array.isArray(historyData.data)
-          ? historyData.data
-          : [];
-
-        if (!cancelled) {
-          setHistory([...rows].reverse());
-        }
-      } catch (error) {
-        console.error(`${metal} history error:`, error);
-      }
-    };
-
-    fetchData();
-
-    // Refresh live price every 15 seconds.
-    const interval = setInterval(fetchData, 15000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [silver]);
+function AssetCard({ silver = false, market, history }) {
 
   const price = Number(market?.price || 0);
 
@@ -314,13 +363,11 @@ function AssetCard({ silver = false }) {
 
   return (
     <div className="asset-card">
-
       <div className={`metal-icon ${silver ? "silver-metal" : ""}`}>
         ▰
       </div>
 
       <div className="asset-copy">
-
         <div className="asset-name">
           {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
         </div>
@@ -331,8 +378,6 @@ function AssetCard({ silver = false }) {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}`
-            : loading
-            ? "Loading..."
             : "—"}
         </div>
 
@@ -351,17 +396,9 @@ function AssetCard({ silver = false }) {
             ? "—"
             : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
         </div>
-
-        {error && (
-          <small className="market-error">
-            {error}
-          </small>
-        )}
-
       </div>
 
       <MiniLine data={history} />
-
     </div>
   );
 }
@@ -384,13 +421,15 @@ function Calendar() {
   const [days, setDays] = useState(7);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchEvents = async () => {
       try {
-        setLoading(true);
         setError("");
 
         const response = await fetch(
-          `${API_BASE}/api/events/upcoming?days=${days}`
+          `${API_BASE}/api/events/upcoming?days=${days}`,
+          { cache: "no-store" }
         );
 
         if (!response.ok) {
@@ -398,53 +437,60 @@ function Calendar() {
         }
 
         const data = await response.json();
-        const allEvents = Array.isArray(data.events)
-  ? data.events
-  : [];
+        const allEvents = Array.isArray(data.events) ? data.events : [];
 
-const now = new Date();
+        const now = new Date();
+        const endDate = new Date(now);
+        endDate.setDate(endDate.getDate() + days);
 
-const endDate = new Date(now);
-endDate.setDate(
-  endDate.getDate() + days
-);
+        const filteredEvents = allEvents
+          .filter((event) => {
+            if (!event.event_time) return false;
 
-const filteredEvents = allEvents
-  .filter((event) => {
-    if (!event.event_time) {
-      return false;
-    }
+            const eventDate = new Date(event.event_time);
 
-    const eventDate = new Date(
-      event.event_time
-    );
+            return (
+              !Number.isNaN(eventDate.getTime()) &&
+              eventDate >= now &&
+              eventDate <= endDate
+            );
+          })
+          .sort(
+            (a, b) =>
+              new Date(a.event_time) - new Date(b.event_time)
+          );
 
-    return (
-      eventDate >= now &&
-      eventDate <= endDate
-    );
-  })
-  .sort(
-    (a, b) =>
-      new Date(a.event_time) -
-      new Date(b.event_time)
-  );
-
-setEvents(filteredEvents);
+        if (!cancelled) {
+          setEvents(filteredEvents);
+        }
       } catch (err) {
         console.error("Economic calendar error:", err);
-        setError(err.message || "Unable to load economic events.");
+
+        // Do not clear already loaded data when a refresh fails.
+        if (!cancelled) {
+          setError(err.message || "Unable to load economic events.");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetchEvents();
+
+    return () => {
+      cancelled = true;
+    };
   }, [days]);
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "—";
-    const date = new Date(`${dateString}T00:00:00`);
+  const formatDate = (dateString, eventTime) => {
+    const value = dateString || eventTime;
+    if (!value) return "—";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -454,7 +500,10 @@ setEvents(filteredEvents);
 
   const formatTime = (eventTime) => {
     if (!eventTime) return "—";
+
     const date = new Date(eventTime);
+    if (Number.isNaN(date.getTime())) return "—";
+
     return date.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
@@ -463,13 +512,17 @@ setEvents(filteredEvents);
   };
 
   const formatValue = (value) => {
-    if (value === null || value === undefined) return "—";
+    if (value === null || value === undefined || value === "") {
+      return "—";
+    }
     return value;
   };
 
   const formatImpact = (impact) => {
     if (!impact) return "Neutral";
-    return impact.charAt(0).toUpperCase() + impact.slice(1).toLowerCase();
+
+    return String(impact).charAt(0).toUpperCase() +
+      String(impact).slice(1).toLowerCase();
   };
 
   return (
@@ -489,7 +542,7 @@ setEvents(filteredEvents);
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            setDays(days === 7 ? 30 : 7);
+            setDays((prev) => (prev === 7 ? 30 : 7));
           }}
         >
           {days === 7 ? "View All →" : "View 7 Days →"}
@@ -513,7 +566,7 @@ setEvents(filteredEvents);
           </thead>
 
           <tbody>
-            {loading && (
+            {loading && events.length === 0 && (
               <tr>
                 <td colSpan="9" style={{ textAlign: "center" }}>
                   Loading economic events...
@@ -521,9 +574,12 @@ setEvents(filteredEvents);
               </tr>
             )}
 
-            {!loading && error && (
+            {!loading && error && events.length === 0 && (
               <tr>
-                <td colSpan="9" style={{ textAlign: "center", color: "#ff4962" }}>
+                <td
+                  colSpan="9"
+                  style={{ textAlign: "center", color: "#ff4962" }}
+                >
                   {error}
                 </td>
               </tr>
@@ -537,33 +593,68 @@ setEvents(filteredEvents);
               </tr>
             )}
 
-            {!loading &&
-              !error &&
-              events.map((event) => (
-                <tr key={event.id}>
-                  <td>{formatDate(event.date)}</td>
+            {events.map((event) => {
+              const eventName =
+                event.event ??
+                event.event_name ??
+                event.name ??
+                "Unknown Event";
+
+              const previous =
+                event.previous ??
+                event.previous_value ??
+                event.prior;
+
+              const forecast =
+                event.forecast ??
+                event.forecast_value ??
+                event.consensus;
+
+              const actual =
+                event.actual ??
+                event.actual_value;
+
+              const impact =
+                event.impact ??
+                event.importance ??
+                "Neutral";
+
+              const gold =
+                event.gold_effect ??
+                event.gold_impact ??
+                "Neutral";
+
+              const silver =
+                event.silver_effect ??
+                event.silver_impact ??
+                "Neutral";
+
+              return (
+                <tr key={event.id ?? `${eventName}-${event.event_time}`}>
+                  <td>{formatDate(event.date, event.event_time)}</td>
                   <td>{formatTime(event.event_time)}</td>
-                  <td><strong>{event.event}</strong></td>
-                  <td>{formatValue(event.previous)}</td>
-                  <td>{formatValue(event.forecast)}</td>
-                  <td>{formatValue(event.actual)}</td>
+                  <td><strong>{eventName}</strong></td>
+                  <td>{formatValue(previous)}</td>
+                  <td>{formatValue(forecast)}</td>
+                  <td>{formatValue(actual)}</td>
                   <td>
-                    <Badge type={formatImpact(event.impact)}>
-                      {formatImpact(event.impact)}
+                    <Badge type={formatImpact(impact)}>
+                      {formatImpact(impact)}
                     </Badge>
                   </td>
                   <td>
-                    <Badge type={event.gold_effect}>
-                      {event.gold_effect || "Neutral"}
+                    <Badge type={gold}>
+                      {gold || "Neutral"}
                     </Badge>
                   </td>
                   <td>
-                    <Badge type={event.silver_effect}>
-                      {event.silver_effect || "Neutral"}
+                    <Badge type={silver}>
+                      {silver || "Neutral"}
                     </Badge>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -572,6 +663,114 @@ setEvents(filteredEvents);
 }
 
 function MarketOverview() {
+  const { marketData } = useMarket();
+
+  const [selectedMetal, setSelectedMetal] = useState("gold");
+  const [selectedRange, setSelectedRange] = useState("1D");
+
+  const [candleData, setCandleData] = useState({
+    gold: [],
+    silver: [],
+  });
+
+  const [candleLoading, setCandleLoading] = useState(true);
+
+  const rangeConfig = {
+    "1D": { interval: "1h", days: 1 },
+    "1W": { interval: "4h", days: 7 },
+    "1M": { interval: "1d", days: 30 },
+    "3M": { interval: "1d", days: 90 },
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCandles = async () => {
+      const config = rangeConfig[selectedRange];
+
+      try {
+        setCandleLoading(true);
+
+        const results = await Promise.allSettled([
+          fetch(
+            `${API_BASE}/api/market/candles/gold?interval=${config.interval}&days=${config.days}`,
+            { cache: "no-store" }
+          ),
+          fetch(
+            `${API_BASE}/api/market/candles/silver?interval=${config.interval}&days=${config.days}`,
+            { cache: "no-store" }
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        const [goldResult, silverResult] = results;
+
+        if (
+          goldResult.status === "fulfilled" &&
+          goldResult.value.ok
+        ) {
+          const data = await goldResult.value.json();
+
+          setCandleData((prev) => ({
+            ...prev,
+            gold: Array.isArray(data.data) ? data.data : [],
+          }));
+        }
+
+        if (
+          silverResult.status === "fulfilled" &&
+          silverResult.value.ok
+        ) {
+          const data = await silverResult.value.json();
+
+          setCandleData((prev) => ({
+            ...prev,
+            silver: Array.isArray(data.data) ? data.data : [],
+          }));
+        }
+      } catch (error) {
+        console.error("Candle data error:", error);
+      } finally {
+        if (!cancelled) {
+          setCandleLoading(false);
+        }
+      }
+    };
+
+    loadCandles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRange]);
+
+  const renderPrice = (metal) => {
+    const market = marketData[metal];
+
+    if (!market?.price) return "—";
+
+    return `$${Number(market.price).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const renderChange = (metal) => {
+    const change = marketData[metal]?.change_percent;
+
+    if (change === null || change === undefined) return "—";
+
+    const value = Number(change);
+
+    return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+  };
+
+  const metalCards =
+    selectedMetal === "all"
+      ? ["gold", "silver"]
+      : [selectedMetal];
+
   return (
     <section className="panel market-panel">
       <div className="panel-head">
@@ -580,30 +779,82 @@ function MarketOverview() {
         </div>
 
         <div className="market-tabs">
-          <button className="selected">Gold</button>
-          <button>Silver</button>
-          <button className="selected soft">1D</button>
-          <button>1W</button>
-          <button>1M</button>
-          <button>3M</button>
+          <button
+            className={selectedMetal === "gold" ? "selected" : ""}
+            onClick={() => setSelectedMetal("gold")}
+          >
+            Gold
+          </button>
+
+          <button
+            className={selectedMetal === "silver" ? "selected" : ""}
+            onClick={() => setSelectedMetal("silver")}
+          >
+            Silver
+          </button>
+
+          {Object.keys(rangeConfig).map((range) => (
+            <button
+              key={range}
+              className={
+                selectedRange === range ? "selected soft" : ""
+              }
+              onClick={() => setSelectedRange(range)}
+            >
+              {range}
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="chart-grid">
-        {[false, true].map((silver) => (
-          <div className="chart-card" key={silver ? "silver" : "gold"}>
-            <div className="chart-top">
-              <div>
-                <div className="chart-name">
-                  {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
+        {metalCards.map((metal) => {
+          const silver = metal === "silver";
+          const market = marketData[metal];
+
+          return (
+            <div className="chart-card" key={metal}>
+              <div className="chart-top">
+                <div>
+                  <div className="chart-name">
+                    {silver
+                      ? "Silver (XAG/USD)"
+                      : "Gold (XAU/USD)"}
+                  </div>
+
+                  <strong>{renderPrice(metal)}</strong>
+
+                  <span
+                    style={{
+                      color:
+                        Number(market?.change_percent || 0) >= 0
+                          ? "#10d8a2"
+                          : "#ff4962",
+                    }}
+                  >
+                    {renderChange(metal)}
+                  </span>
                 </div>
-                <strong>{silver ? "$52.31" : "$4,356.82"}</strong>
-                <span>+{silver ? "1.59%" : "0.43%"}</span>
               </div>
+
+              {candleLoading &&
+              candleData[metal].length === 0 ? (
+                <div
+                  style={{
+                    height: "135px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  Loading chart...
+                </div>
+              ) : (
+                <CandleChart data={candleData[metal]} />
+              )}
             </div>
-            <CandleChart silver={silver} />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -724,30 +975,276 @@ function Sentiment() {
   );
 }
 
-export default function App() {
+function MarketProvider({ children }) {
+  const [marketData, setMarketData] = useState({
+    gold: null,
+    silver: null,
+  });
+
+  const [historyData, setHistoryData] = useState({
+    gold: [],
+    silver: [],
+  });
+
+  const [marketLoading, setMarketLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchMarketData = async () => {
+      try {
+        const results = await Promise.allSettled([
+          fetch(`${API_BASE}/api/market/gold`, {
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE}/api/market/silver`, {
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE}/api/market/history/gold?limit=30`, {
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE}/api/market/history/silver?limit=30`, {
+            cache: "no-store",
+          }),
+        ]);
+
+        if (cancelled) return;
+
+        const [goldPrice, silverPrice, goldHistory, silverHistory] =
+          results;
+
+        if (
+          goldPrice.status === "fulfilled" &&
+          goldPrice.value.ok
+        ) {
+          const data = await goldPrice.value.json();
+
+          setMarketData((prev) => ({
+            ...prev,
+            gold: data,
+          }));
+        }
+
+        if (
+          silverPrice.status === "fulfilled" &&
+          silverPrice.value.ok
+        ) {
+          const data = await silverPrice.value.json();
+
+          setMarketData((prev) => ({
+            ...prev,
+            silver: data,
+          }));
+        }
+
+        if (
+          goldHistory.status === "fulfilled" &&
+          goldHistory.value.ok
+        ) {
+          const data = await goldHistory.value.json();
+
+          setHistoryData((prev) => ({
+            ...prev,
+            gold: [...(data.data || [])].reverse(),
+          }));
+        }
+
+        if (
+          silverHistory.status === "fulfilled" &&
+          silverHistory.value.ok
+        ) {
+          const data = await silverHistory.value.json();
+
+          setHistoryData((prev) => ({
+            ...prev,
+            silver: [...(data.data || [])].reverse(),
+          }));
+        }
+
+        setMarketLoading(false);
+      } catch (error) {
+        console.error("Market data error:", error);
+
+        if (!cancelled) {
+          setMarketLoading(false);
+        }
+      }
+    };
+
+    fetchMarketData();
+
+    const interval = setInterval(fetchMarketData, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  return (
+    <MarketContext.Provider
+      value={{
+        marketData,
+        historyData,
+        marketLoading,
+      }}
+    >
+      {children}
+    </MarketContext.Provider>
+  );
+}
+function DashboardHome() {
+  const { marketData, historyData } = useMarket();
+
+  return (
+    <main className="main">
+      <div className="left-column">
+        <div className="asset-row">
+          <AssetCard
+            market={marketData.gold}
+            history={historyData.gold}
+          />
+
+          <AssetCard
+            silver
+            market={marketData.silver}
+            history={historyData.silver}
+          />
+
+          <ReportsCard />
+        </div>
+
+        <Calendar />
+        <MarketOverview />
+
+        <div className="bottom-grid">
+          <NewsPanel />
+          <SpeechPanel />
+        </div>
+      </div>
+
+      <div className="right-column">
+        <AIPrediction />
+        <Sentiment />
+      </div>
+    </main>
+  );
+}
+
+function PageContainer({ children, title }) {
+  return (
+    <main className="main">
+      <div className="left-column">
+        <section className="panel">
+          <div className="panel-head">
+            <div className="section-title">
+              <span>{title}</span>
+            </div>
+          </div>
+          {children}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function AppContent() {
+  const [activeMenu, setActiveMenu] = useState("Home");
+
+  const renderPage = () => {
+    switch (activeMenu) {
+      case "Economic Calendar":
+        return (
+          <PageContainer title="Economic Calendar">
+            <Calendar />
+          </PageContainer>
+        );
+
+      case "Market Dashboard":
+        return <DashboardHome />;
+
+      case "Gold":
+        return (
+          <PageContainer title="Gold Market">
+            <MarketOverview />
+          </PageContainer>
+        );
+
+      case "Silver":
+        return (
+          <PageContainer title="Silver Market">
+            <MarketOverview />
+          </PageContainer>
+        );
+
+      case "News":
+        return (
+          <PageContainer title="Latest Gold & Silver News">
+            <NewsPanel />
+          </PageContainer>
+        );
+
+      case "Speeches & Statements":
+        return (
+          <PageContainer title="Speeches & Statements">
+            <SpeechPanel />
+          </PageContainer>
+        );
+
+      case "Event Analysis":
+        return (
+          <PageContainer title="Event Analysis">
+            <Calendar />
+          </PageContainer>
+        );
+
+      case "Historical Analysis":
+        return (
+          <PageContainer title="Historical Analysis">
+            <MarketOverview />
+          </PageContainer>
+        );
+
+      case "AI Prediction":
+        return (
+          <PageContainer title="AI Prediction">
+            <AIPrediction />
+          </PageContainer>
+        );
+
+      case "Settings":
+        return (
+          <PageContainer title="Settings">
+            <div style={{ padding: "24px" }}>
+              Settings panel will be connected here.
+            </div>
+          </PageContainer>
+        );
+
+      case "Home":
+      default:
+        return <DashboardHome />;
+    }
+  };
+
   return (
     <div className="app-shell">
-      <Topbar/>
-      <Sidebar/>
-      <main className="main">
-        <div className="left-column">
-          <div className="asset-row">
-            <AssetCard/>
-            <AssetCard silver/>
-            <ReportsCard/>
-          </div>
-          <Calendar/>
-          <MarketOverview/>
-          <div className="bottom-grid">
-            <NewsPanel/>
-            <SpeechPanel/>
-          </div>
-        </div>
-        <div className="right-column">
-          <AIPrediction/>
-          <Sentiment/>
-        </div>
-      </main>
+      <Topbar />
+
+      <Sidebar
+        activeMenu={activeMenu}
+        setActiveMenu={setActiveMenu}
+      />
+
+      {renderPage()}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <MarketProvider>
+      <AppContent />
+    </MarketProvider>
   );
 }
