@@ -5,7 +5,7 @@ import React, {
   createContext,
 } from "react";
 import "./App.css";
-
+import TradingViewWidget from "./components/TradingViewWidget";
 // Railway Backend Production API URL
 const API_BASE = "https://commoditytrack-production-5160.up.railway.app";
 const MarketContext = createContext(null);
@@ -620,72 +620,13 @@ function MarketOverview() {
 
   const [selectedMetal, setSelectedMetal] = useState("all");
   const [selectedRange, setSelectedRange] = useState("1D");
-  const [candles, setCandles] = useState({
-    gold: [],
-    silver: [],
-  });
 
   const rangeConfig = {
-    "1D": { interval: "1h", days: 1 },
-    "1W": { interval: "4h", days: 7 },
-    "1M": { interval: "1d", days: 30 },
-    "3M": { interval: "1d", days: 90 },
+    "1D": "60",
+    "1W": "240",
+    "1M": "D",
+    "3M": "D",
   };
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCandles() {
-      const config = rangeConfig[selectedRange];
-
-      try {
-        const results = await Promise.allSettled([
-          fetch(
-            `${API_BASE}/api/market/candles/gold?interval=${config.interval}&days=${config.days}`,
-            { cache: "no-store" }
-          ),
-          fetch(
-            `${API_BASE}/api/market/candles/silver?interval=${config.interval}&days=${config.days}`,
-            { cache: "no-store" }
-          ),
-        ]);
-
-        if (cancelled) return;
-
-        const [goldResult, silverResult] = results;
-
-        if (
-          goldResult.status === "fulfilled" &&
-          goldResult.value.ok
-        ) {
-          const data = await goldResult.value.json();
-          setCandles((prev) => ({
-            ...prev,
-            gold: Array.isArray(data.data) ? data.data : [],
-          }));
-        }
-
-        if (
-          silverResult.status === "fulfilled" &&
-          silverResult.value.ok
-        ) {
-          const data = await silverResult.value.json();
-          setCandles((prev) => ({
-            ...prev,
-            silver: Array.isArray(data.data) ? data.data : [],
-          }));
-        }
-      } catch (error) {
-        console.error("Market Overview candle error:", error);
-      }
-    }
-
-    loadCandles();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRange]);
 
   const cards =
     selectedMetal === "all"
@@ -694,6 +635,7 @@ function MarketOverview() {
 
   const getPrice = (silver) => {
     const market = marketData?.[silver ? "silver" : "gold"];
+
     if (!market?.price) return "—";
 
     return `$${Number(market.price).toLocaleString("en-US", {
@@ -704,6 +646,7 @@ function MarketOverview() {
 
   const getChange = (silver) => {
     const market = marketData?.[silver ? "silver" : "gold"];
+
     if (
       market?.change_percent === null ||
       market?.change_percent === undefined
@@ -712,17 +655,20 @@ function MarketOverview() {
     }
 
     const value = Number(market.change_percent);
+
     return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
 
   return (
     <section className="panel market-panel">
       <div className="panel-head">
+
         <div className="section-title">
           ▥ <span>Market Overview</span>
         </div>
 
         <div className="market-tabs">
+
           <button
             className={selectedMetal === "gold" ? "selected" : ""}
             onClick={() => setSelectedMetal("gold")}
@@ -747,16 +693,22 @@ function MarketOverview() {
           {Object.keys(rangeConfig).map((range) => (
             <button
               key={range}
-              className={selectedRange === range ? "selected soft" : ""}
+              className={
+                selectedRange === range
+                  ? "selected soft"
+                  : ""
+              }
               onClick={() => setSelectedRange(range)}
             >
               {range}
             </button>
           ))}
+
         </div>
       </div>
 
       <div className="chart-grid">
+
         {cards.map((silver) => {
           const metal = silver ? "silver" : "gold";
           const market = marketData?.[metal];
@@ -766,13 +718,20 @@ function MarketOverview() {
               className="chart-card"
               key={metal}
             >
+
               <div className="chart-top">
+
                 <div>
+
                   <div className="chart-name">
-                    {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
+                    {silver
+                      ? "Silver (XAG/USD)"
+                      : "Gold (XAU/USD)"}
                   </div>
 
-                  <strong>{getPrice(silver)}</strong>
+                  <strong>
+                    {getPrice(silver)}
+                  </strong>
 
                   <span
                     style={{
@@ -784,16 +743,34 @@ function MarketOverview() {
                   >
                     {getChange(silver)}
                   </span>
+
                 </div>
+
               </div>
 
-              <CandleChart
-                silver={silver}
-                data={candles[metal]}
-              />
+              <div
+                style={{
+                  width: "100%",
+                  height: "380px",
+                  marginTop: "15px",
+                  borderRadius: "10px",
+                  overflow: "hidden",
+                }}
+              >
+                <TradingViewWidget
+                  symbol={
+                    silver
+                      ? "OANDA:XAGUSD"
+                      : "OANDA:XAUUSD"
+                  }
+                  interval={rangeConfig[selectedRange]}
+                />
+              </div>
+
             </div>
           );
         })}
+
       </div>
     </section>
   );
