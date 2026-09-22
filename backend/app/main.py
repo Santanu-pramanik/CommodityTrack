@@ -14,6 +14,7 @@ from app.config import scheduler, settings
 from app.services.news_collector import collect_news
 from app.services.market_collector import collect_market_data
 from app.services.event_collector import collect_events
+import asyncio
 
 
 @asynccontextmanager
@@ -22,12 +23,14 @@ async def lifespan(app: FastAPI):
     print("Starting CommodityTrack API...")
 
     try:
+        
         # Run initial data collection
         print("Running initial market data collection...")
-        collect_market_data()
+        await asyncio.to_thread(collect_market_data)
+
 
         print("Running initial economic event collection...")
-        collect_events()
+        await asyncio.to_thread(collect_events)
 
         # Schedule news updates
         scheduler.add_job(
@@ -93,6 +96,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://commoditytrack-production-2084.up.railway.app",
+        "https://commoditytrack-production-5160.up.railway.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
