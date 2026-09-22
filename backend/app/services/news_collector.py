@@ -1,501 +1,233 @@
+# backend/app/services/news_collector.py
+
 import os
-import json
 import requests
 import psycopg2
-
-from datetime import datetime, timezone
 from dotenv import load_dotenv
-
-
-# =========================================================
-# LOAD ENVIRONMENT
-# =========================================================
 
 load_dotenv()
 
-API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 DATABASE_URL = os.getenv("DATABASE_URL")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-API_URL = "https://www.alphavantage.co/query"
+FINNHUB_NEWS_URL = "https://finnhub.io/api/v1/news"
 
 
-# =========================================================
-# FETCH NEWS FROM ALPHA VANTAGE
-# =========================================================
+# ============================================================
+# DATABASE
+# ============================================================
+
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
+
+
+# ============================================================
+# FETCH NEWS FROM FINNHUB
+# ============================================================
 
 def fetch_news():
 
-    if not API_KEY:
-        print("❌ ALPHA_VANTAGE_API_KEY not configured")
+    print("Fetching financial news...")
+
+    if not FINNHUB_API_KEY:
+        print("❌ FINNHUB_API_KEY is missing in .env")
         return []
-
-    print("📰 Fetching financial news...")
-
-    params = {
-        "function": "NEWS_SENTIMENT",
-        "topics": "financial_markets,economy_monetary,economy_macro,economy_fiscal",
-        "sort": "LATEST",
-        "limit": 50,
-        "apikey": API_KEY
-    }
 
     try:
 
+        params = {
+            "category": "general",
+            "token": FINNHUB_API_KEY
+        }
+
         response = requests.get(
-            API_URL,
+            FINNHUB_NEWS_URL,
             params=params,
-            timeout=30
+            timeout=20
         )
 
         response.raise_for_status()
 
         data = response.json()
 
-        if "feed" not in data:
-
-            print("❌ No news feed returned")
-
-            print(
-                json.dumps(
-                    data,
-                    indent=2
-                )
-            )
-
+        if not isinstance(data, list):
+            print("❌ Unexpected response from Finnhub")
+            print(data)
             return []
 
-        return data["feed"]
+        print(f"📰 News received: {len(data)}")
 
-    except Exception as e:
+        return data
 
-        print(
-            f"❌ Error fetching news: {e}"
-        )
+    except requests.exceptions.RequestException as e:
+
+        print(f"❌ Error fetching news: {e}")
 
         return []
 
 
-# =========================================================
-# FILTER RELEVANT NEWS
-# =========================================================
+# ============================================================
+# FILTER RELEVANT METALS NEWS
+# ============================================================
 
-def is_relevant_news(item):
+def filter_relevant_news(articles):
 
-    text = (
-        (item.get("title") or "")
-        + " "
-        + (item.get("summary") or "")
-    ).lower()
+    relevant = []
 
     keywords = [
-
-        # Metals
         "gold",
         "silver",
-        "xau",
-        "xag",
-
-        # Federal Reserve
+        "precious metal",
+        "precious metals",
+        "bullion",
+        "commodity",
+        "metals",
         "fed",
         "federal reserve",
-        "powell",
-
-        # Interest rate
         "interest rate",
-        "rate cut",
-        "rate hike",
-        "monetary policy",
-
-        # Inflation
         "inflation",
-        "cpi",
-        "ppi",
-
-        # Jobs
-        "nonfarm",
-        "payroll",
-        "jobs report",
-        "unemployment",
-
-        # Dollar / Bonds
-        "dollar",
-        "usd",
-        "treasury yield",
-        "bond yield",
-
-        # Trump / Policy
+        "tariff",
         "trump",
-        "tariff"
+        "dollar",
+        "usd"
     ]
 
-    return any(
-        keyword in text
-        for keyword in keywords
-    )
+    for article in articles:
+
+        headline = article.get("headline", "")
+        summary = article.get("summary", "")
+
+        text = f"{headline} {summary}".lower()
+
+        if any(keyword in text for keyword in keywords):
+            relevant.append(article)
+
+    print(f"🎯 Relevant news: {len(relevant)}")
+
+    return relevant
 
 
-# =========================================================
-# NORMALIZE SENTIMENT
-# =========================================================
+# ============================================================
+# SAVE NEWS TO POSTGRESQL
+# ============================================================
 
-def normalize_sentiment(label):
+def save_news(articles):
 
-    if not label:
-        return "NEUTRAL"
-
-    label = label.upper()
-
-    if "BULLISH" in label:
-        return "BULLISH"
-
-    if "BEARISH" in label:
-        return "BEARISH"
-
-    return "NEUTRAL"
-
-
-# =========================================================
-# DETECT METAL TYPE
-# =========================================================
-
-def detect_metal_type(item):
-
-    text = (
-        (item.get("title") or "")
-        + " "
-        + (item.get("summary") or "")
-    ).lower()
-
-    has_gold = any(
-        x in text
-        for x in ["gold", "xau"]
-    )
-
-    has_silver = any(
-        x in text
-        for x in ["silver", "xag"]
-    )
-
-    if has_gold and has_silver:
-        return "BOTH"
-
-    if has_gold:
-        return "GOLD"
-
-    if has_silver:
-        return "SILVER"
-
-    return "MACRO"
-
-
-# =========================================================
-# DETECT SYMBOL
-# =========================================================
-
-def detect_symbol(metal_type):
-
-    if metal_type == "GOLD":
-        return "GC=F"
-
-    if metal_type == "SILVER":
-        return "SI=F"
-
-    if metal_type == "BOTH":
-        return "GC=F,SI=F"
-
-    return None
-
-
-# =========================================================
-# DETECT IMPACT
-# =========================================================
-
-def detect_impact(sentiment):
-
-    if sentiment == "BULLISH":
-        return "POSITIVE"
-
-    if sentiment == "BEARISH":
-        return "NEGATIVE"
-
-    return "NEUTRAL"
-
-
-# =========================================================
-# SAVE NEWS TO DATABASE
-# =========================================================
-
-def save_news(news_list):
-
-    if not DATABASE_URL:
-
-        print(
-            "❌ DATABASE_URL not configured"
-        )
-
+    if not articles:
+        print("⚠️ No relevant news found")
         return 0
-
-    conn = None
-    cursor = None
-
-    inserted = 0
 
     try:
 
-        conn = psycopg2.connect(
-            DATABASE_URL
-        )
-
+        conn = get_db_connection()
         cursor = conn.cursor()
 
-        for item in news_list:
+        inserted = 0
 
-            title = item.get("title")
-            summary = item.get("summary")
-            source = item.get("source")
-            url = item.get("url")
+        for article in articles:
 
-            if not url:
+            title = article.get("headline")
+            summary = article.get("summary")
+            source = article.get("source")
+            url = article.get("url")
+
+            # Finnhub timestamp is Unix timestamp
+            timestamp = article.get("datetime")
+
+            if timestamp:
+                from datetime import datetime, timezone
+
+                published_at = datetime.fromtimestamp(
+                    timestamp,
+                    tz=timezone.utc
+                )
+            else:
+                published_at = None
+
+            if not title or not url:
                 continue
 
-            # -------------------------------------------------
-            # Published time
-            # -------------------------------------------------
+            try:
 
-            published_at = None
-
-            published_raw = item.get(
-                "time_published"
-            )
-
-            if published_raw:
-
-                try:
-
-                    published_at = datetime.strptime(
-                        published_raw,
-                        "%Y%m%dT%H%M%S"
-                    ).replace(
-                        tzinfo=timezone.utc
+                cursor.execute(
+                    """
+                    INSERT INTO news_articles
+                    (
+                        title,
+                        summary,
+                        source,
+                        url,
+                        published_at
                     )
-
-                except ValueError:
-
-                    published_at = None
-
-            # -------------------------------------------------
-            # Sentiment
-            # -------------------------------------------------
-
-            sentiment = normalize_sentiment(
-                item.get(
-                    "overall_sentiment_label"
-                )
-            )
-
-            sentiment_score = item.get(
-                "overall_sentiment_score"
-            )
-
-            # -------------------------------------------------
-            # Metal
-            # -------------------------------------------------
-
-            metal_type = detect_metal_type(
-                item
-            )
-
-            symbol = detect_symbol(
-                metal_type
-            )
-
-            impact = detect_impact(
-                sentiment
-            )
-
-            # -------------------------------------------------
-            # Trump
-            # -------------------------------------------------
-
-            combined_text = (
-                (title or "")
-                + " "
-                + (summary or "")
-            ).lower()
-
-            is_trump_related = (
-                "trump" in combined_text
-            )
-
-            # -------------------------------------------------
-            # Keywords
-            # -------------------------------------------------
-
-            keywords = {
-
-                "topics": item.get(
-                    "topics",
-                    []
-                ),
-
-                "ticker_sentiment": item.get(
-                    "ticker_sentiment",
-                    []
-                )
-            }
-
-            # -------------------------------------------------
-            # Insert
-            # -------------------------------------------------
-
-            query = """
-
-                INSERT INTO news_articles (
-
-                    title,
-                    summary,
-                    source,
-                    url,
-                    published_at,
-                    symbol,
-                    metal_type,
-                    sentiment,
-                    sentiment_score,
-                    impact,
-                    keywords,
-                    is_trump_related,
-                    created_at
-
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (url) DO NOTHING
+                    """,
+                    (
+                        title,
+                        summary,
+                        source,
+                        url,
+                        published_at
+                    )
                 )
 
-                SELECT
+                if cursor.rowcount > 0:
+                    inserted += 1
 
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s::jsonb,
-                    %s,
-                    NOW()
+            except Exception as e:
 
-                WHERE NOT EXISTS (
-
-                    SELECT 1
-
-                    FROM news_articles
-
-                    WHERE url = %s
-
-                );
-
-            """
-
-            cursor.execute(
-                query,
-                (
-                    title,
-                    summary,
-                    source,
-                    url,
-                    published_at,
-                    symbol,
-                    metal_type,
-                    sentiment,
-                    sentiment_score,
-                    impact,
-                    json.dumps(keywords),
-                    is_trump_related,
-                    url
-                )
-            )
-
-            if cursor.rowcount > 0:
-
-                inserted += 1
+                print(f"⚠️ Error inserting article: {e}")
 
         conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        print(f"💾 New articles saved: {inserted}")
 
         return inserted
 
     except Exception as e:
 
-        if conn:
-            conn.rollback()
-
-        print(
-            f"❌ Database error: {e}"
-        )
+        print(f"❌ Database error: {e}")
 
         return 0
 
-    finally:
 
-        if cursor:
-            cursor.close()
-
-        if conn:
-            conn.close()
-
-
-# =========================================================
-# MAIN COLLECTOR FUNCTION
-# =========================================================
+# ============================================================
+# MAIN COLLECTION PIPELINE
+# ============================================================
 
 def collect_news():
 
-    print("\n" + "=" * 60)
+    print()
+    print("=" * 60)
     print("📰 AUTOMATIC NEWS COLLECTION")
     print("=" * 60)
 
-    news = fetch_news()
+    articles = fetch_news()
 
-    print(
-        f"📥 News received: {len(news)}"
-    )
-
-    relevant_news = [
-
-        item
-
-        for item in news
-
-        if is_relevant_news(item)
-
-    ]
-
-    print(
-        f"🎯 Relevant news: {len(relevant_news)}"
-    )
-
-    if not relevant_news:
-
-        print(
-            "⚠️ No relevant news found"
-        )
-
+    if not articles:
+        print("⚠️ No news received")
         return
 
-    inserted = save_news(
-        relevant_news
-    )
+    relevant_articles = filter_relevant_news(articles)
 
-    print(
-        f"✅ New articles inserted: {inserted}"
-    )
+    save_news(relevant_articles)
 
-    print("=" * 60 + "\n")
+    print("=" * 60)
+    print("✅ NEWS COLLECTION COMPLETED")
+    print("=" * 60)
 
 
-# =========================================================
-# MANUAL TEST
-# =========================================================
+# ============================================================
+# RUN
+# ============================================================
 
 if __name__ == "__main__":
-
     collect_news()
