@@ -224,65 +224,116 @@ function Sidebar() {
 function AssetCard({ silver = false }) {
   const [market, setMarket] = useState(null);
   const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const metal = silver ? "silver" : "gold";
 
+    let cancelled = false;
+
     const fetchData = async () => {
       try {
-        const [priceResponse, historyResponse] = await Promise.all([
-          fetch(`${API_BASE}/api/market/${metal}`),
-          fetch(`${API_BASE}/api/market/history/${metal}?limit=30`),
-        ]);
+        const priceResponse = await fetch(
+          `${API_BASE}/api/market/${metal}`,
+          {
+            cache: "no-store",
+          }
+        );
 
-        if (!priceResponse.ok || !historyResponse.ok) {
-          throw new Error("Market API error");
+        if (!priceResponse.ok) {
+          throw new Error(
+            `Price API error: ${priceResponse.status}`
+          );
         }
 
         const priceData = await priceResponse.json();
+
+        if (!cancelled) {
+          setMarket(priceData);
+          setError("");
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error(`${metal} price error:`, error);
+
+        if (!cancelled) {
+          setError("Unable to update price");
+
+          // Do not remove old market data.
+          setLoading(false);
+        }
+      }
+
+      try {
+        const historyResponse = await fetch(
+          `${API_BASE}/api/market/history/${metal}?limit=60`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        if (!historyResponse.ok) {
+          throw new Error(
+            `History API error: ${historyResponse.status}`
+          );
+        }
+
         const historyData = await historyResponse.json();
 
-        setMarket(priceData);
+        const rows = Array.isArray(historyData.data)
+          ? historyData.data
+          : [];
 
-        const rows = historyData.data || [];
-        setHistory([...rows].reverse());
+        if (!cancelled) {
+          setHistory([...rows].reverse());
+        }
       } catch (error) {
-        console.error(`${metal} market error:`, error);
+        console.error(`${metal} history error:`, error);
       }
     };
 
     fetchData();
-    // 5 seconds intervals for live Binance feeds
-    const interval = setInterval(fetchData, 5000);
 
-    return () => clearInterval(interval);
+    // Refresh live price every 15 seconds.
+    const interval = setInterval(fetchData, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [silver]);
 
   const price = Number(market?.price || 0);
 
   const change =
-    market?.change_percent !== null && market?.change_percent !== undefined
+    market?.change_percent !== null &&
+    market?.change_percent !== undefined
       ? Number(market.change_percent)
       : null;
 
   return (
     <div className="asset-card">
+
       <div className={`metal-icon ${silver ? "silver-metal" : ""}`}>
         ▰
       </div>
 
       <div className="asset-copy">
+
         <div className="asset-name">
           {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
         </div>
 
         <div className="asset-price">
-          {market && price > 0
+          {price > 0
             ? `$${price.toLocaleString("en-US", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}`
-            : "Loading..."}
+            : loading
+            ? "Loading..."
+            : "—"}
         </div>
 
         <div
@@ -300,9 +351,17 @@ function AssetCard({ silver = false }) {
             ? "—"
             : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
         </div>
+
+        {error && (
+          <small className="market-error">
+            {error}
+          </small>
+        )}
+
       </div>
 
       <MiniLine data={history} />
+
     </div>
   );
 }
@@ -339,7 +398,39 @@ function Calendar() {
         }
 
         const data = await response.json();
-        setEvents(data.events || []);
+        const allEvents = Array.isArray(data.events)
+  ? data.events
+  : [];
+
+const now = new Date();
+
+const endDate = new Date(now);
+endDate.setDate(
+  endDate.getDate() + days
+);
+
+const filteredEvents = allEvents
+  .filter((event) => {
+    if (!event.event_time) {
+      return false;
+    }
+
+    const eventDate = new Date(
+      event.event_time
+    );
+
+    return (
+      eventDate >= now &&
+      eventDate <= endDate
+    );
+  })
+  .sort(
+    (a, b) =>
+      new Date(a.event_time) -
+      new Date(b.event_time)
+  );
+
+setEvents(filteredEvents);
       } catch (err) {
         console.error("Economic calendar error:", err);
         setError(err.message || "Unable to load economic events.");
