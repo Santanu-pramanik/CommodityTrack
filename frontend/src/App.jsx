@@ -84,46 +84,47 @@ function MiniLine({ data = [] }) {
   );
 }
 
-function CandleChart({ data = [] }) {
+function CandleChart({ data = [], silver = false }) {
   const width = 390;
   const height = 135;
-  const chartBottom = 118;
   const chartTop = 6;
+  const chartBottom = 120;
 
   const candles = (Array.isArray(data) ? data : [])
-    .map((candle) => ({
-      timestamp: candle.timestamp,
-      open: Number(candle.open),
-      high: Number(candle.high),
-      low: Number(candle.low),
-      close: Number(candle.close),
+    .map((item) => ({
+      timestamp: item.timestamp,
+      open: Number(item.open),
+      high: Number(item.high),
+      low: Number(item.low),
+      close: Number(item.close),
     }))
     .filter(
-      (candle) =>
-        Number.isFinite(candle.open) &&
-        Number.isFinite(candle.high) &&
-        Number.isFinite(candle.low) &&
-        Number.isFinite(candle.close)
+      (item) =>
+        Number.isFinite(item.open) &&
+        Number.isFinite(item.high) &&
+        Number.isFinite(item.low) &&
+        Number.isFinite(item.close)
     );
 
   if (candles.length === 0) {
     return (
       <svg
-        viewBox={`0 0 ${width} ${height}`}
+        viewBox="0 0 390 135"
         className="candle-chart"
         preserveAspectRatio="none"
       >
-        {[20, 50, 80, 110].map((y) => (
+        {[15, 45, 75, 105].map((y) => (
           <line
             key={y}
             x1="0"
             y1={y}
-            x2={width}
+            x2="390"
             y2={y}
             className="grid"
           />
         ))}
-        <text x="8" y="65" className="axis-text">
+        <line x1="0" y1="120" x2="390" y2="120" className="axis" />
+        <text x="145" y="70" className="axis-text">
           No candle data
         </text>
       </svg>
@@ -132,47 +133,41 @@ function CandleChart({ data = [] }) {
 
   const minPrice = Math.min(...candles.map((c) => c.low));
   const maxPrice = Math.max(...candles.map((c) => c.high));
-  const priceRange = maxPrice - minPrice || 1;
+  const range = maxPrice - minPrice || 1;
 
-  const yForPrice = (price) =>
+  const y = (price) =>
     chartBottom -
-    ((price - minPrice) / priceRange) *
-      (chartBottom - chartTop);
+    ((price - minPrice) / range) * (chartBottom - chartTop);
 
   const slot = width / candles.length;
   const bodyWidth = Math.max(2, Math.min(8, slot * 0.55));
 
   return (
     <svg
-      viewBox={`0 0 ${width} ${height}`}
+      viewBox="0 0 390 135"
       className="candle-chart"
       preserveAspectRatio="none"
     >
-      {[20, 50, 80, 110].map((y) => (
+      {[15, 45, 75, 105].map((lineY) => (
         <line
-          key={y}
+          key={lineY}
           x1="0"
-          y1={y}
-          x2={width}
-          y2={y}
+          y1={lineY}
+          x2="390"
+          y2={lineY}
           className="grid"
         />
       ))}
 
       {candles.map((candle, index) => {
-        const x = slot * index + slot / 2;
-
-        const openY = yForPrice(candle.open);
-        const closeY = yForPrice(candle.close);
-        const highY = yForPrice(candle.high);
-        const lowY = yForPrice(candle.low);
-
+        const x = index * slot + slot / 2;
+        const openY = y(candle.open);
+        const closeY = y(candle.close);
+        const highY = y(candle.high);
+        const lowY = y(candle.low);
         const up = candle.close >= candle.open;
         const bodyY = Math.min(openY, closeY);
-        const bodyHeight = Math.max(
-          1.5,
-          Math.abs(closeY - openY)
-        );
+        const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
 
         return (
           <g key={`${candle.timestamp}-${index}`}>
@@ -182,9 +177,8 @@ function CandleChart({ data = [] }) {
               x2={x}
               y2={lowY}
               stroke={up ? "#10d8a2" : "#ff4962"}
-              strokeWidth="1.2"
+              strokeWidth="1.4"
             />
-
             <rect
               x={x - bodyWidth / 2}
               y={bodyY}
@@ -197,49 +191,21 @@ function CandleChart({ data = [] }) {
         );
       })}
 
-      <line
-        x1="0"
-        y1={chartBottom}
-        x2={width}
-        y2={chartBottom}
-        className="axis"
-      />
+      <line x1="0" y1="120" x2="390" y2="120" className="axis" />
 
-      {candles.length > 0 && (
-        <>
-          <text x="4" y="133" className="axis-text">
-            {new Date(candles[0].timestamp).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </text>
+      {["00:00", "06:00", "12:00", "18:00"].map((t, i) => (
+        <text key={t} x={i * 118 + 4} y="133" className="axis-text">
+          {t}
+        </text>
+      ))}
 
-          <text
-            x="335"
-            y="133"
-            className="axis-text"
-          >
-            {new Date(
-              candles[candles.length - 1].timestamp
-            ).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </text>
+      <text x="350" y="16" className="axis-text">
+        {maxPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+      </text>
 
-          <text x="350" y="16" className="axis-text">
-            {maxPrice.toLocaleString("en-US", {
-              maximumFractionDigits: 2,
-            })}
-          </text>
-
-          <text x="350" y="113" className="axis-text">
-            {minPrice.toLocaleString("en-US", {
-              maximumFractionDigits: 2,
-            })}
-          </text>
-        </>
-      )}
+      <text x="350" y="113" className="axis-text">
+        {minPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+      </text>
     </svg>
   );
 }
@@ -352,7 +318,6 @@ function Sidebar({ activeMenu, setActiveMenu }) {
 }
 
 function AssetCard({ silver = false, market, history }) {
-
   const price = Number(market?.price || 0);
 
   const change =
@@ -446,7 +411,6 @@ function Calendar() {
         const filteredEvents = allEvents
           .filter((event) => {
             if (!event.event_time) return false;
-
             const eventDate = new Date(event.event_time);
 
             return (
@@ -466,7 +430,6 @@ function Calendar() {
       } catch (err) {
         console.error("Economic calendar error:", err);
 
-        // Do not clear already loaded data when a refresh fails.
         if (!cancelled) {
           setError(err.message || "Unable to load economic events.");
         }
@@ -484,8 +447,8 @@ function Calendar() {
     };
   }, [days]);
 
-  const formatDate = (dateString, eventTime) => {
-    const value = dateString || eventTime;
+  const formatDate = (dateValue, eventTime) => {
+    const value = dateValue || eventTime;
     if (!value) return "—";
 
     const date = new Date(value);
@@ -512,17 +475,14 @@ function Calendar() {
   };
 
   const formatValue = (value) => {
-    if (value === null || value === undefined || value === "") {
-      return "—";
-    }
+    if (value === null || value === undefined || value === "") return "—";
     return value;
   };
 
   const formatImpact = (impact) => {
     if (!impact) return "Neutral";
-
-    return String(impact).charAt(0).toUpperCase() +
-      String(impact).slice(1).toLowerCase();
+    const value = String(impact);
+    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
   };
 
   return (
@@ -576,10 +536,7 @@ function Calendar() {
 
             {!loading && error && events.length === 0 && (
               <tr>
-                <td
-                  colSpan="9"
-                  style={{ textAlign: "center", color: "#ff4962" }}
-                >
+                <td colSpan="9" style={{ textAlign: "center", color: "#ff4962" }}>
                   {error}
                 </td>
               </tr>
@@ -643,14 +600,10 @@ function Calendar() {
                     </Badge>
                   </td>
                   <td>
-                    <Badge type={gold}>
-                      {gold || "Neutral"}
-                    </Badge>
+                    <Badge type={gold}>{gold || "Neutral"}</Badge>
                   </td>
                   <td>
-                    <Badge type={silver}>
-                      {silver || "Neutral"}
-                    </Badge>
+                    <Badge type={silver}>{silver || "Neutral"}</Badge>
                   </td>
                 </tr>
               );
@@ -663,17 +616,14 @@ function Calendar() {
 }
 
 function MarketOverview() {
-  const { marketData } = useMarket();
+  const { marketData } = useContext(MarketContext);
 
-  const [selectedMetal, setSelectedMetal] = useState("gold");
+  const [selectedMetal, setSelectedMetal] = useState("all");
   const [selectedRange, setSelectedRange] = useState("1D");
-
-  const [candleData, setCandleData] = useState({
+  const [candles, setCandles] = useState({
     gold: [],
     silver: [],
   });
-
-  const [candleLoading, setCandleLoading] = useState(true);
 
   const rangeConfig = {
     "1D": { interval: "1h", days: 1 },
@@ -685,12 +635,10 @@ function MarketOverview() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadCandles = async () => {
+    async function loadCandles() {
       const config = rangeConfig[selectedRange];
 
       try {
-        setCandleLoading(true);
-
         const results = await Promise.allSettled([
           fetch(
             `${API_BASE}/api/market/candles/gold?interval=${config.interval}&days=${config.days}`,
@@ -711,8 +659,7 @@ function MarketOverview() {
           goldResult.value.ok
         ) {
           const data = await goldResult.value.json();
-
-          setCandleData((prev) => ({
+          setCandles((prev) => ({
             ...prev,
             gold: Array.isArray(data.data) ? data.data : [],
           }));
@@ -723,20 +670,15 @@ function MarketOverview() {
           silverResult.value.ok
         ) {
           const data = await silverResult.value.json();
-
-          setCandleData((prev) => ({
+          setCandles((prev) => ({
             ...prev,
             silver: Array.isArray(data.data) ? data.data : [],
           }));
         }
       } catch (error) {
-        console.error("Candle data error:", error);
-      } finally {
-        if (!cancelled) {
-          setCandleLoading(false);
-        }
+        console.error("Market Overview candle error:", error);
       }
-    };
+    }
 
     loadCandles();
 
@@ -745,9 +687,13 @@ function MarketOverview() {
     };
   }, [selectedRange]);
 
-  const renderPrice = (metal) => {
-    const market = marketData[metal];
+  const cards =
+    selectedMetal === "all"
+      ? [false, true]
+      : [selectedMetal === "silver"];
 
+  const getPrice = (silver) => {
+    const market = marketData?.[silver ? "silver" : "gold"];
     if (!market?.price) return "—";
 
     return `$${Number(market.price).toLocaleString("en-US", {
@@ -756,20 +702,18 @@ function MarketOverview() {
     })}`;
   };
 
-  const renderChange = (metal) => {
-    const change = marketData[metal]?.change_percent;
+  const getChange = (silver) => {
+    const market = marketData?.[silver ? "silver" : "gold"];
+    if (
+      market?.change_percent === null ||
+      market?.change_percent === undefined
+    ) {
+      return "—";
+    }
 
-    if (change === null || change === undefined) return "—";
-
-    const value = Number(change);
-
+    const value = Number(market.change_percent);
     return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
   };
-
-  const metalCards =
-    selectedMetal === "all"
-      ? ["gold", "silver"]
-      : [selectedMetal];
 
   return (
     <section className="panel market-panel">
@@ -793,12 +737,17 @@ function MarketOverview() {
             Silver
           </button>
 
+          <button
+            className={selectedMetal === "all" ? "selected" : ""}
+            onClick={() => setSelectedMetal("all")}
+          >
+            Both
+          </button>
+
           {Object.keys(rangeConfig).map((range) => (
             <button
               key={range}
-              className={
-                selectedRange === range ? "selected soft" : ""
-              }
+              className={selectedRange === range ? "selected soft" : ""}
               onClick={() => setSelectedRange(range)}
             >
               {range}
@@ -808,21 +757,22 @@ function MarketOverview() {
       </div>
 
       <div className="chart-grid">
-        {metalCards.map((metal) => {
-          const silver = metal === "silver";
-          const market = marketData[metal];
+        {cards.map((silver) => {
+          const metal = silver ? "silver" : "gold";
+          const market = marketData?.[metal];
 
           return (
-            <div className="chart-card" key={metal}>
+            <div
+              className="chart-card"
+              key={metal}
+            >
               <div className="chart-top">
                 <div>
                   <div className="chart-name">
-                    {silver
-                      ? "Silver (XAG/USD)"
-                      : "Gold (XAU/USD)"}
+                    {silver ? "Silver (XAG/USD)" : "Gold (XAU/USD)"}
                   </div>
 
-                  <strong>{renderPrice(metal)}</strong>
+                  <strong>{getPrice(silver)}</strong>
 
                   <span
                     style={{
@@ -832,26 +782,15 @@ function MarketOverview() {
                           : "#ff4962",
                     }}
                   >
-                    {renderChange(metal)}
+                    {getChange(silver)}
                   </span>
                 </div>
               </div>
 
-              {candleLoading &&
-              candleData[metal].length === 0 ? (
-                <div
-                  style={{
-                    height: "135px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  Loading chart...
-                </div>
-              ) : (
-                <CandleChart data={candleData[metal]} />
-              )}
+              <CandleChart
+                silver={silver}
+                data={candles[metal]}
+              />
             </div>
           );
         })}
@@ -1093,8 +1032,8 @@ function MarketProvider({ children }) {
     </MarketContext.Provider>
   );
 }
-function DashboardHome() {
-  const { marketData, historyData } = useMarket();
+function HomePage() {
+  const { marketData, historyData } = useContext(MarketContext);
 
   return (
     <main className="main">
@@ -1104,13 +1043,11 @@ function DashboardHome() {
             market={marketData.gold}
             history={historyData.gold}
           />
-
           <AssetCard
             silver
             market={marketData.silver}
             history={historyData.silver}
           />
-
           <ReportsCard />
         </div>
 
@@ -1131,101 +1068,212 @@ function DashboardHome() {
   );
 }
 
-function PageContainer({ children, title }) {
-  return (
-    <main className="main">
-      <div className="left-column">
-        <section className="panel">
-          <div className="panel-head">
-            <div className="section-title">
-              <span>{title}</span>
-            </div>
+function ActivePage({ activeMenu }) {
+  switch (activeMenu) {
+    case "Economic Calendar":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <Calendar />
           </div>
-          {children}
-        </section>
-      </div>
-    </main>
-  );
+          <div className="right-column">
+            <AIPrediction />
+          </div>
+        </main>
+      );
+
+    case "Market Dashboard":
+      return <HomePage />;
+
+    case "Gold":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <MarketOverview />
+          </div>
+        </main>
+      );
+
+    case "Silver":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <MarketOverview />
+          </div>
+        </main>
+      );
+
+    case "News":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <NewsPanel />
+          </div>
+        </main>
+      );
+
+    case "Speeches & Statements":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <SpeechPanel />
+          </div>
+        </main>
+      );
+
+    case "Event Analysis":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <Calendar />
+          </div>
+        </main>
+      );
+
+    case "Historical Analysis":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <MarketOverview />
+          </div>
+        </main>
+      );
+
+    case "AI Prediction":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <AIPrediction />
+          </div>
+        </main>
+      );
+
+    case "Settings":
+      return (
+        <main className="main">
+          <div className="left-column">
+            <section className="panel">
+              <div className="panel-head">
+                <div className="section-title">
+                  ⚙ <span>Settings</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      );
+
+    case "Home":
+    default:
+      return <HomePage />;
+  }
 }
 
-function AppContent() {
+export default function App() {
   const [activeMenu, setActiveMenu] = useState("Home");
 
-  const renderPage = () => {
-    switch (activeMenu) {
-      case "Economic Calendar":
-        return (
-          <PageContainer title="Economic Calendar">
-            <Calendar />
-          </PageContainer>
-        );
+  const [marketData, setMarketData] = useState({
+    gold: null,
+    silver: null,
+  });
 
-      case "Market Dashboard":
-        return <DashboardHome />;
+  const [historyData, setHistoryData] = useState({
+    gold: [],
+    silver: [],
+  });
 
-      case "Gold":
-        return (
-          <PageContainer title="Gold Market">
-            <MarketOverview />
-          </PageContainer>
-        );
+  useEffect(() => {
+    let cancelled = false;
 
-      case "Silver":
-        return (
-          <PageContainer title="Silver Market">
-            <MarketOverview />
-          </PageContainer>
-        );
+    const fetchMarketData = async () => {
+      const results = await Promise.allSettled([
+        fetch(`${API_BASE}/api/market/gold`, {
+          cache: "no-store",
+        }),
+        fetch(`${API_BASE}/api/market/silver`, {
+          cache: "no-store",
+        }),
+        fetch(`${API_BASE}/api/market/history/gold?limit=30`, {
+          cache: "no-store",
+        }),
+        fetch(`${API_BASE}/api/market/history/silver?limit=30`, {
+          cache: "no-store",
+        }),
+      ]);
 
-      case "News":
-        return (
-          <PageContainer title="Latest Gold & Silver News">
-            <NewsPanel />
-          </PageContainer>
-        );
+      if (cancelled) return;
 
-      case "Speeches & Statements":
-        return (
-          <PageContainer title="Speeches & Statements">
-            <SpeechPanel />
-          </PageContainer>
-        );
+      const [goldPrice, silverPrice, goldHistory, silverHistory] =
+        results;
 
-      case "Event Analysis":
-        return (
-          <PageContainer title="Event Analysis">
-            <Calendar />
-          </PageContainer>
-        );
+      if (
+        goldPrice.status === "fulfilled" &&
+        goldPrice.value.ok
+      ) {
+        const data = await goldPrice.value.json();
+        if (!cancelled) {
+          setMarketData((prev) => ({
+            ...prev,
+            gold: data,
+          }));
+        }
+      }
 
-      case "Historical Analysis":
-        return (
-          <PageContainer title="Historical Analysis">
-            <MarketOverview />
-          </PageContainer>
-        );
+      if (
+        silverPrice.status === "fulfilled" &&
+        silverPrice.value.ok
+      ) {
+        const data = await silverPrice.value.json();
+        if (!cancelled) {
+          setMarketData((prev) => ({
+            ...prev,
+            silver: data,
+          }));
+        }
+      }
 
-      case "AI Prediction":
-        return (
-          <PageContainer title="AI Prediction">
-            <AIPrediction />
-          </PageContainer>
-        );
+      if (
+        goldHistory.status === "fulfilled" &&
+        goldHistory.value.ok
+      ) {
+        const data = await goldHistory.value.json();
+        if (!cancelled) {
+          setHistoryData((prev) => ({
+            ...prev,
+            gold: [...(data.data || [])].reverse(),
+          }));
+        }
+      }
 
-      case "Settings":
-        return (
-          <PageContainer title="Settings">
-            <div style={{ padding: "24px" }}>
-              Settings panel will be connected here.
-            </div>
-          </PageContainer>
-        );
+      if (
+        silverHistory.status === "fulfilled" &&
+        silverHistory.value.ok
+      ) {
+        const data = await silverHistory.value.json();
+        if (!cancelled) {
+          setHistoryData((prev) => ({
+            ...prev,
+            silver: [...(data.data || [])].reverse(),
+          }));
+        }
+      }
+    };
 
-      case "Home":
-      default:
-        return <DashboardHome />;
-    }
-  };
+    fetchMarketData().catch((error) => {
+      console.error("Market data refresh error:", error);
+    });
+
+    const interval = setInterval(() => {
+      fetchMarketData().catch((error) => {
+        console.error("Market data refresh error:", error);
+      });
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
     <div className="app-shell">
@@ -1236,15 +1284,14 @@ function AppContent() {
         setActiveMenu={setActiveMenu}
       />
 
-      {renderPage()}
+      <MarketContext.Provider
+        value={{
+          marketData,
+          historyData,
+        }}
+      >
+        <ActivePage activeMenu={activeMenu} />
+      </MarketContext.Provider>
     </div>
-  );
-}
-
-export default function App() {
-  return (
-    <MarketProvider>
-      <AppContent />
-    </MarketProvider>
   );
 }
