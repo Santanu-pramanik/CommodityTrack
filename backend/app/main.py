@@ -1,13 +1,14 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api import events
 from app.api import market
 from app.api import news
 from app.api import speeches
 from app.api import predictions
 from app.api import historical
-
-from contextlib import asynccontextmanager
 
 from app.config import scheduler, settings
 from app.services.news_collector import collect_news
@@ -17,18 +18,18 @@ from app.services.event_collector import collect_events
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # STARTUP
-    print("🚀 Starting CommodityTrack API...")
+
+    print("Starting CommodityTrack API...")
 
     try:
-        # Run market collection immediately
+        # Run initial data collection
         print("Running initial market data collection...")
         collect_market_data()
-        print("Running initial 30-day economic event collection...")
-        collect_events()
-        
 
-        # News update job
+        print("Running initial economic event collection...")
+        collect_events()
+
+        # Schedule news updates
         scheduler.add_job(
             collect_news,
             "interval",
@@ -37,78 +38,46 @@ async def lifespan(app: FastAPI):
             name="News Data Update",
             replace_existing=True
         )
+
+        # Schedule economic event updates
         scheduler.add_job(
             collect_events,
             "interval",
-            days=7,
+            hours=1,
             id="economic_events_update",
             name="Economic Events Update",
             replace_existing=True
         )
 
-        # Market update job
+        # Schedule market updates
         scheduler.add_job(
             collect_market_data,
             "interval",
-            seconds=5,
+            seconds=settings.MARKET_UPDATE_INTERVAL,
             id="market_data_update",
             name="Market Data Update",
             replace_existing=True
         )
 
+        # Start scheduler
         if not scheduler.running:
             scheduler.start()
 
         print(
-            f"✅ Scheduler started - "
-            f"Market updates every {settings.MARKET_UPDATE_INTERVAL} seconds"
+            f"Scheduler started. "
+            f"Market updates every {settings.MARKET_UPDATE_INTERVAL} seconds."
         )
 
     except Exception as e:
-        print(f"❌ Scheduler startup error: {e}")
+        print(f"Scheduler startup error: {e}")
 
     yield
 
-    # SHUTDOWN
+    # Shutdown scheduler
     if scheduler.running:
         scheduler.shutdown()
-        print("✅ Scheduler stopped")
+        print("Scheduler stopped.")
 
-
-    @app.get("/api/market/{metal_type}")
-    def get_latest_market(metal_type: str):
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        
-        # NULL ভ্যালু স্কিপ করে লেটেস্ট ভ্যালু আনার কোড
-        cursor.execute(
-            """
-            SELECT metal_type, symbol, price, change_percent, volume, timestamp 
-            FROM global_metals 
-            WHERE LOWER(metal_type) = %s AND change_percent IS NOT NULL
-            ORDER BY id DESC LIMIT 1
-            """,
-            (metal_type.lower(),)
-        )
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
-
-        if not row:
-            return {"error": "Data not found"}
-
-        return {
-            "metal_type": row[0],
-            "symbol": row[1],
-            "price": float(row[2]),
-            "change_percent": float(row[3]) if row[3] is not None else 0.0,
-            "volume": float(row[4]) if row[4] is not None else 0.0,
-            "timestamp": row[5]
-        }
-
-# ============================================================
-# FASTAPI APP
-# ============================================================
 
 app = FastAPI(
     title="Gold & Silver Market Intelligence",
@@ -116,9 +85,7 @@ app = FastAPI(
 )
 
 
-# ============================================================
-# CORS
-# ============================================================
+# CORS configuration
 
 app.add_middleware(
     CORSMiddleware,
@@ -126,6 +93,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://commoditytrack-production-2084.up.railway.app",
+        "https://commoditytrack-production-5160.up.railway.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -133,9 +101,7 @@ app.add_middleware(
 )
 
 
-# ============================================================
-# ROUTERS
-# ============================================================
+# Register API routers
 
 app.include_router(events.router)
 app.include_router(market.router)
@@ -145,9 +111,7 @@ app.include_router(predictions.router)
 app.include_router(historical.router)
 
 
-# ============================================================
-# ROOT
-# ============================================================
+# Root endpoint
 
 @app.get("/")
 def root():
@@ -156,6 +120,8 @@ def root():
         "status": "running"
     }
 
+
+# Health endpoint
 
 @app.get("/health")
 def health():

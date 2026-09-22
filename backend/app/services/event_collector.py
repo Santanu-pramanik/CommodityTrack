@@ -3,58 +3,101 @@ import requests
 import psycopg2
 
 from datetime import datetime, timedelta, timezone
+
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# FinanceCalendar API
+
 CALENDAR_API = (
     "https://www.financecalendar.com/wp-json/fc/v1/calendar"
 )
 
 SOURCE_NAME = "FinanceCalendar"
 
-# Next 30 days
 DAYS_AHEAD = 30
 
 
 IMPORTANT_KEYWORDS = [
+
     "fed",
     "fomc",
     "interest rate",
+    "interest rates",
     "federal funds",
+
     "cpi",
     "consumer price index",
     "inflation",
+
     "ppi",
     "producer price index",
+
     "nonfarm payroll",
     "non-farm payroll",
     "payrolls",
+
     "unemployment",
     "jobless claims",
+
     "gdp",
+
     "pce",
     "core pce",
+
     "retail sales",
+
     "ism manufacturing",
     "ism services",
+
     "consumer confidence",
     "consumer sentiment",
+
     "powell",
+
     "fomc minutes",
+
     "jolts",
+
     "employment",
+
+    "average hourly earnings",
+
+    "adp employment",
+
+    "durable goods",
+
+    "industrial production",
+
+    "housing starts",
+
+    "building permits",
 ]
 
 
-def get_connection():
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL not found in .env")
+US_COUNTRY_VALUES = {
+    "US",
+    "USA",
+    "USD",
+    "UNITED STATES",
+    "UNITED STATES OF AMERICA",
+    "AMERICA",
+}
 
-    return psycopg2.connect(DATABASE_URL)
+
+def get_connection():
+
+    if not DATABASE_URL:
+        raise ValueError(
+            "DATABASE_URL not found in .env"
+        )
+
+    return psycopg2.connect(
+        DATABASE_URL
+    )
 
 
 def clean_numeric(value):
@@ -62,141 +105,239 @@ def clean_numeric(value):
     if value is None:
         return None
 
-    value = str(value).strip()
-
-    if value == "":
+    if isinstance(value, bool):
         return None
 
+    value = str(value).strip()
+
+    if not value:
+        return None
+
+    value = value.replace(",", "")
+    value = value.replace("%", "")
+
+    multiplier = 1
+
+    suffix = value[-1:].upper()
+
+    if suffix == "K":
+
+        multiplier = 1000
+        value = value[:-1]
+
+    elif suffix == "M":
+
+        multiplier = 1000000
+        value = value[:-1]
+
+    elif suffix == "B":
+
+        multiplier = 1000000000
+        value = value[:-1]
+
     try:
-        value = value.replace(",", "")
-        value = value.replace("%", "")
-
-        multiplier = 1
-
-        if value.upper().endswith("K"):
-            multiplier = 1000
-            value = value[:-1]
-
-        elif value.upper().endswith("M"):
-            multiplier = 1000000
-            value = value[:-1]
-
-        elif value.upper().endswith("B"):
-            multiplier = 1000000000
-            value = value[:-1]
 
         return float(value) * multiplier
 
     except ValueError:
 
-        print(f"[NUMERIC ERROR] Cannot convert: {value}")
-
         return None
 
 
-def parse_event_time(date_string):
+def parse_event_time(value):
 
-    if not date_string:
+    if not value:
         return None
 
     try:
 
-        dt = datetime.fromisoformat(
-            str(date_string).replace("Z", "+00:00")
-        )
+        value = str(value).strip()
+
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+
+        dt = datetime.fromisoformat(value)
 
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
 
-        return dt.astimezone(timezone.utc)
+            dt = dt.replace(
+                tzinfo=timezone.utc
+            )
+
+        return dt.astimezone(
+            timezone.utc
+        )
 
     except Exception as error:
 
         print(
             f"[DATE ERROR] "
-            f"{date_string} -> {error}"
+            f"{value} -> {error}"
         )
 
         return None
 
 
-def is_relevant_event(event):
+def get_country(event):
 
-    # FinanceCalendar normally provides country/currency
     country = (
         event.get("country")
         or event.get("currency")
+        or event.get("country_code")
         or ""
-    ).upper()
+    )
 
-    title = (
+    return str(country).strip()
+
+
+def get_event_name(event):
+
+    return str(
         event.get("title")
         or event.get("name")
         or event.get("event")
         or ""
+    ).strip()
+
+
+def is_us_event(event):
+
+    country = get_country(event)
+
+    country_upper = country.upper()
+
+    return (
+        country_upper in US_COUNTRY_VALUES
+        or country_upper.startswith("US ")
+        or "UNITED STATES" in country_upper
+    )
+
+
+def is_relevant_event(event):
+
+    event_name = get_event_name(
+        event
     ).lower()
 
-    # We mainly want USD events
-    if country not in ["US", "USD"]:
+    if not event_name:
+        return False
+
+    if not is_us_event(event):
+
         return False
 
     return any(
-        keyword in title
+        keyword in event_name
         for keyword in IMPORTANT_KEYWORDS
     )
 
 
 def get_metal_impact(event_name):
 
-    # Initial value.
-    # Later we will calculate this from
-    # historical gold/silver reaction.
+    name = event_name.lower()
+
+    # These are descriptive initial labels.
+    # Later this can be replaced by historical
+    # event-reaction calculations.
+
+    if any(
+        keyword in name
+        for keyword in [
+            "fed",
+            "fomc",
+            "interest rate",
+            "federal funds",
+            "powell",
+        ]
+    ):
+
+        return "HIGH"
+
+    if any(
+        keyword in name
+        for keyword in [
+            "cpi",
+            "inflation",
+            "ppi",
+            "pce",
+            "nonfarm",
+            "non-farm payroll",
+            "payrolls",
+            "unemployment",
+            "jobless claims",
+            "gdp",
+        ]
+    ):
+
+        return "MEDIUM"
+
     return "NEUTRAL"
 
 
 def fetch_calendar():
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(
+        timezone.utc
+    ).date()
 
-    end_date = today + timedelta(
-        days=DAYS_AHEAD
+    end_date = (
+        today
+        + timedelta(
+            days=DAYS_AHEAD
+        )
     )
 
-    url = (
-        f"{CALENDAR_API}"
-        f"?from={today.isoformat()}"
-        f"&to={end_date.isoformat()}"
-        f"&limit=500"
-    )
+    params = {
 
-    print("=" * 60)
-    print("Fetching 30-Day Economic Calendar")
-    print("=" * 60)
+        "from": today.isoformat(),
 
-    print(f"From: {today}")
-    print(f"To  : {end_date}")
+        "to": end_date.isoformat(),
 
-    headers = {
-        "User-Agent":
-            "Mozilla/5.0 "
-            "(Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/153.0 Safari/537.36"
+        "limit": 500,
     }
 
-    response = requests.get(
-        url,
-        headers=headers,
-        timeout=30
+    headers = {
+
+        "User-Agent":
+            "CommodityTrack/1.0 "
+            "(Economic Calendar Application)"
+    }
+
+    print()
+    print(
+        "Fetching economic calendar..."
     )
 
-    response.raise_for_status()
+    print(
+        f"From: {today}"
+    )
 
-    result = response.json()
+    print(
+        f"To  : {end_date}"
+    )
 
-    # API may return either a list
-    # or an object containing events
+    try:
+
+        response = requests.get(
+            CALENDAR_API,
+            params=params,
+            headers=headers,
+            timeout=30
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+    except Exception as error:
+
+        print(
+            f"[CALENDAR API ERROR] "
+            f"{error}"
+        )
+
+        return []
+
     if isinstance(result, list):
 
         events = result
@@ -223,83 +364,129 @@ def fetch_calendar():
 
 def normalize_event(raw_event):
 
-    event_name = (
-        raw_event.get("title")
-        or raw_event.get("name")
-        or raw_event.get("event")
+    event_name = get_event_name(
+        raw_event
     )
 
-    country = (
-        raw_event.get("country")
-        or raw_event.get("currency")
+    if not event_name:
+
+        return None
+
+    country = get_country(
+        raw_event
     )
 
     event_time = parse_event_time(
         raw_event.get("time_utc")
-        or raw_event.get("date")
         or raw_event.get("datetime")
+        or raw_event.get("date")
+        or raw_event.get("time")
     )
 
-    if not event_name:
-        return None
-
     if not event_time:
+
         return None
 
     previous_value = clean_numeric(
         raw_event.get("previous")
-        or raw_event.get("prior")
+        if raw_event.get("previous") is not None
+        else raw_event.get("prior")
     )
 
     forecast_value = clean_numeric(
         raw_event.get("forecast")
-        or raw_event.get("consensus")
+        if raw_event.get("forecast") is not None
+        else raw_event.get("consensus")
     )
 
     actual_value = clean_numeric(
         raw_event.get("actual")
     )
 
-    impact = (
+    impact = str(
         raw_event.get("impact")
         or "MEDIUM"
-    )
+    ).upper()
+
+    if impact not in {
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+    }:
+
+        impact = "MEDIUM"
 
     metal_impact = get_metal_impact(
         event_name
     )
 
-    description = (
-        f"{event_name} "
-        f"({country}) "
-        f"from {SOURCE_NAME}."
+    category = raw_event.get(
+        "category"
+    )
+
+    source_url = raw_event.get(
+        "url"
+    )
+
+    description_parts = [
+        event_name,
+        f"({country})",
+        f"Source: {SOURCE_NAME}"
+    ]
+
+    if category:
+
+        description_parts.append(
+            f"Category: {category}"
+        )
+
+    if source_url:
+
+        description_parts.append(
+            f"URL: {source_url}"
+        )
+
+    description = " | ".join(
+        description_parts
     )
 
     return {
 
-        "event_name": event_name,
+        "event_name":
+            event_name,
 
-        "event_type": "ECONOMIC",
+        "event_type":
+            "ECONOMIC",
 
-        "country": country,
+        "country":
+            country,
 
-        "event_time": event_time,
+        "event_time":
+            event_time,
 
-        "previous_value": previous_value,
+        "previous_value":
+            previous_value,
 
-        "forecast_value": forecast_value,
+        "forecast_value":
+            forecast_value,
 
-        "actual_value": actual_value,
+        "actual_value":
+            actual_value,
 
-        "unit": None,
+        "unit":
+            None,
 
-        "impact": str(impact).upper(),
+        "impact":
+            impact,
 
-        "gold_impact": metal_impact,
+        "gold_impact":
+            metal_impact,
 
-        "silver_impact": metal_impact,
+        "silver_impact":
+            metal_impact,
 
-        "description": description
+        "description":
+            description,
     }
 
 
@@ -311,14 +498,14 @@ def save_event(event):
 
         with conn.cursor() as cursor:
 
-            # Check existing event
             cursor.execute(
                 """
                 SELECT id
                 FROM economic_events
                 WHERE event_name = %s
                   AND event_time = %s
-                  AND country = %s
+                  AND COALESCE(country, '') =
+                      COALESCE(%s, '')
                 LIMIT 1
                 """,
                 (
@@ -332,7 +519,6 @@ def save_event(event):
 
             if existing:
 
-                # UPDATE existing event
                 cursor.execute(
                     """
                     UPDATE economic_events
@@ -369,7 +555,6 @@ def save_event(event):
 
             else:
 
-                # INSERT new event
                 cursor.execute(
                     """
                     INSERT INTO economic_events
@@ -433,7 +618,9 @@ def save_event(event):
 def collect_events():
 
     print()
-    print("📅 Starting economic event collection...")
+    print(
+        "Starting economic event collection..."
+    )
     print()
 
     raw_events = fetch_calendar()
@@ -445,14 +632,18 @@ def collect_events():
         timezone.utc
     ).date()
 
-    end_date = today + timedelta(
-        days=DAYS_AHEAD
+    end_date = (
+        today
+        + timedelta(
+            days=DAYS_AHEAD
+        )
     )
 
     for raw_event in raw_events:
 
-        # USD filtering
-        if not is_relevant_event(raw_event):
+        if not is_relevant_event(
+            raw_event
+        ):
 
             skipped += 1
             continue
@@ -481,7 +672,9 @@ def collect_events():
 
         try:
 
-            save_event(event)
+            save_event(
+                event
+            )
 
             saved += 1
 
@@ -494,14 +687,22 @@ def collect_events():
             )
 
     print()
-    print("=" * 60)
+    print(
+        "=" * 60
+    )
+
     print(
         f"Events saved/updated: {saved}"
     )
+
     print(
         f"Events skipped: {skipped}"
     )
-    print("=" * 60)
+
+    print(
+        "=" * 60
+    )
+
     print()
 
 
@@ -513,9 +714,6 @@ if __name__ == "__main__":
 
     except Exception as error:
 
-        print()
         print(
-            "[FATAL ERROR]",
-            error
+            f"[FATAL ERROR] {error}"
         )
-        print()
