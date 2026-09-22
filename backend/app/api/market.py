@@ -36,8 +36,10 @@ def get_connection():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL not configured")
 
-    return psycopg2.connect(DATABASE_URL)
-
+    return psycopg2.connect(
+        DATABASE_URL,
+        connect_timeout=5
+    )
 
 # ============================================================
 # LATEST MARKET DATA
@@ -150,7 +152,7 @@ async def broadcast_to_websockets(data):
 # ============================================================
 
 @router.get("/")
-async def get_market_data():
+def get_market_data():
 
     try:
 
@@ -200,7 +202,7 @@ async def get_gold_price():
                 volume,
                 source
             FROM global_metals
-            WHERE UPPER(metal_type) = 'GOLD'
+            WHERE metal_type = 'GOLD'
             ORDER BY timestamp DESC, id DESC
             LIMIT 1;
         """)
@@ -260,7 +262,7 @@ async def get_gold_price():
 # ============================================================
 
 @router.get("/silver")
-async def get_silver_price():
+def get_silver_price():
 
     conn = None
     cursor = None
@@ -280,7 +282,7 @@ async def get_silver_price():
                 volume,
                 source
             FROM global_metals
-            WHERE UPPER(metal_type) = 'SILVER'
+            WHERE metal_type = 'SILVER'
             ORDER BY timestamp DESC, id DESC
             LIMIT 1;
         """)
@@ -340,7 +342,7 @@ async def get_silver_price():
 # ============================================================
 
 @router.get("/history/{metal_type}")
-async def get_price_history(
+def get_price_history(
     metal_type: str,
     limit: int = 100
 ):
@@ -438,7 +440,7 @@ async def get_price_history(
 # ============================================================
 
 @router.get("/candles/{metal_type}")
-async def get_market_candles(
+def get_market_candles(
     metal_type: str,
     interval: str = "5m",
     days: int = 1
@@ -590,7 +592,7 @@ async def get_market_candles(
 # ============================================================
 
 @router.get("/stats")
-async def get_market_stats():
+def get_market_stats():
 
     conn = None
     cursor = None
