@@ -9,11 +9,14 @@ from app.api import news
 from app.api import speeches
 from app.api import predictions
 from app.api import historical
+from app.api.google_auth import router as google_auth_router
+
 
 from app.config import scheduler, settings
 from app.services.news_collector import collect_news
 from app.services.market_collector import collect_market_data
 from app.services.event_collector import collect_events
+
 import asyncio
 
 
@@ -114,6 +117,7 @@ app.include_router(news.router)
 app.include_router(speeches.router)
 app.include_router(predictions.router)
 app.include_router(historical.router)
+app.include_router(google_auth_router)
 
 
 # Root endpoint
@@ -122,7 +126,9 @@ app.include_router(historical.router)
 def root():
     return {
         "app": "Gold & Silver Market Intelligence",
-        "status": "running"
+        "status": "running",
+        "status": "online",
+        "service": "CommodityTrack API"
     }
 
 

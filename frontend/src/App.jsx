@@ -6,9 +6,17 @@ import React, {
 } from "react";
 import "./App.css";
 import TradingViewWidget from "./components/TradingViewWidget";
+import LoginPage from "./components/LoginPage";
+import NotificationPreference from "./components/NotificationPreference";
+
+import {
+  getUserIdFromURL,
+  isLoginSuccess,
+} from "./services/auth";
 // Railway Backend Production API URL
 const API_BASE = "https://commoditytrack-production-5160.up.railway.app";
 const MarketContext = createContext(null);
+
 const news = [
   ["🏛️", "US CPI inflation remains elevated, keeps Fed rate cut hopes alive", "2 hours ago", "Reuters", "Positive", "Gold ↑", "Silver ↑"],
   ["🏭", "Geopolitical tensions in Middle East increase safe-haven demand", "4 hours ago", "Bloomberg", "Positive", "Gold ↑", "Silver ↑"],
@@ -1148,7 +1156,8 @@ function ActivePage({ activeMenu }) {
 
 export default function App() {
   const [activeMenu, setActiveMenu] = useState("Home");
-
+  const [authState, setAuthState] = useState("checking");
+  const [userId, setUserId] = useState(null);
   const [marketData, setMarketData] = useState({
     gold: null,
     silver: null,
@@ -1159,6 +1168,38 @@ export default function App() {
     silver: [],
   });
 
+  useEffect(() => {
+  const loggedIn = isLoginSuccess();
+  const id = getUserIdFromURL();
+
+  if (loggedIn && id) {
+    localStorage.setItem(
+      "commoditytrack_user_id",
+      id
+    );
+
+    setUserId(id);
+    setAuthState("notification");
+
+    window.history.replaceState(
+      {},
+      document.title,
+      window.location.pathname
+    );
+
+    return;
+  }
+
+  const savedUserId =
+    localStorage.getItem("commoditytrack_user_id");
+
+  if (savedUserId) {
+    setUserId(savedUserId);
+    setAuthState("dashboard");
+  } else {
+    setAuthState("login");
+  }
+}, []);
   useEffect(() => {
     let cancelled = false;
 
@@ -1252,6 +1293,48 @@ export default function App() {
     };
   }, []);
 
+  if (authState === "checking") {
+  return <div>Loading...</div>;
+}
+
+if (authState === "login") {
+  return (
+    <div className="app-shell auth-preview">
+      <Topbar />
+
+      <Sidebar
+        activeMenu={activeMenu}
+        setActiveMenu={setActiveMenu}
+      />
+
+      <MarketContext.Provider
+        value={{
+          marketData,
+          historyData,
+        }}
+      >
+        <ActivePage activeMenu={activeMenu} />
+      </MarketContext.Provider>
+
+      {/* Login Popup */}
+      <div className="login-overlay">
+        <div className="login-modal">
+          <LoginPage />
+        </div>
+      </div>
+    </div>
+  );
+}
+if (authState === "notification") {
+  return (
+    <NotificationPreference
+      userId={userId}
+      onComplete={() => {
+        setAuthState("dashboard");
+      }}
+    />
+  );
+}
   return (
     <div className="app-shell">
       <Topbar />
