@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
-
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.api import events
 from app.api import market
@@ -108,7 +109,10 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET_KEY", "change-this-secret")
+)
 # Register API routers
 
 app.include_router(events.router)
