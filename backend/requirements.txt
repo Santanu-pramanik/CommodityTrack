@@ -6,3 +6,4 @@ requests
 yfinance
 Authlib
 httpx>=0.27.0
+itsdangerous
