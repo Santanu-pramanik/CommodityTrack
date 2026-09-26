@@ -1156,8 +1156,11 @@ function ActivePage({ activeMenu }) {
 
 export default function App() {
   const [activeMenu, setActiveMenu] = useState("Home");
+
   const [authState, setAuthState] = useState("checking");
+
   const [userId, setUserId] = useState(null);
+
   const [marketData, setMarketData] = useState({
     gold: null,
     silver: null,
@@ -1168,124 +1171,199 @@ export default function App() {
     silver: [],
   });
 
+  /*
+   * ================================
+   * AUTH CHECK
+   * ================================
+   */
   useEffect(() => {
-  const loggedIn = isLoginSuccess();
-  const id = getUserIdFromURL();
+    const checkAuthentication = () => {
+      try {
+        // Check Google login callback
+        const loggedIn = isLoginSuccess();
+        const callbackUserId = getUserIdFromURL();
 
-  if (loggedIn && id) {
-    localStorage.setItem(
-      "commoditytrack_user_id",
-      id
-    );
+        if (loggedIn && callbackUserId) {
+          console.log(
+            "Google login successful. User ID:",
+            callbackUserId
+          );
 
-    setUserId(id);
-    setAuthState("notification");
+          // Save user ID
+          localStorage.setItem(
+            "commoditytrack_user_id",
+            String(callbackUserId)
+          );
 
-    window.history.replaceState(
-      {},
-      document.title,
-      window.location.pathname
-    );
+          setUserId(String(callbackUserId));
 
-    return;
-  }
+          // New Google login → notification preference
+          setAuthState("notification");
 
-  const savedUserId =
-    localStorage.getItem("commoditytrack_user_id");
+          // Remove OAuth query parameters from URL
+          window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname
+          );
 
-  if (savedUserId) {
-    setUserId(savedUserId);
-    setAuthState("dashboard");
-  } else {
-    setAuthState("login");
-  }
-}, []);
+          return;
+        }
+
+        // Check previously logged-in user
+        const savedUserId = localStorage.getItem(
+          "commoditytrack_user_id"
+        );
+
+        if (savedUserId) {
+          console.log(
+            "Existing user found:",
+            savedUserId
+          );
+
+          setUserId(savedUserId);
+          setAuthState("dashboard");
+
+          return;
+        }
+
+        // No user
+        setAuthState("login");
+      } catch (error) {
+        console.error(
+          "Authentication check failed:",
+          error
+        );
+
+        setAuthState("login");
+      }
+    };
+
+    checkAuthentication();
+  }, []);
+
+  /*
+   * ================================
+   * MARKET DATA
+   * ================================
+   */
   useEffect(() => {
     let cancelled = false;
 
     const fetchMarketData = async () => {
-      const results = await Promise.allSettled([
-        fetch(`${API_BASE}/api/market/gold`, {
-          cache: "no-store",
-        }),
-        fetch(`${API_BASE}/api/market/silver`, {
-          cache: "no-store",
-        }),
-        fetch(`${API_BASE}/api/market/history/gold?limit=30`, {
-          cache: "no-store",
-        }),
-        fetch(`${API_BASE}/api/market/history/silver?limit=30`, {
-          cache: "no-store",
-        }),
-      ]);
+      try {
+        const results = await Promise.allSettled([
+          fetch(`${API_BASE}/api/market/gold`, {
+            cache: "no-store",
+          }),
 
-      if (cancelled) return;
+          fetch(`${API_BASE}/api/market/silver`, {
+            cache: "no-store",
+          }),
 
-      const [goldPrice, silverPrice, goldHistory, silverHistory] =
-        results;
+          fetch(
+            `${API_BASE}/api/market/history/gold?limit=30`,
+            {
+              cache: "no-store",
+            }
+          ),
 
-      if (
-        goldPrice.status === "fulfilled" &&
-        goldPrice.value.ok
-      ) {
-        const data = await goldPrice.value.json();
-        if (!cancelled) {
-          setMarketData((prev) => ({
-            ...prev,
-            gold: data,
-          }));
+          fetch(
+            `${API_BASE}/api/market/history/silver?limit=30`,
+            {
+              cache: "no-store",
+            }
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        const [
+          goldPrice,
+          silverPrice,
+          goldHistory,
+          silverHistory,
+        ] = results;
+
+        // GOLD
+        if (
+          goldPrice.status === "fulfilled" &&
+          goldPrice.value.ok
+        ) {
+          const data = await goldPrice.value.json();
+
+          if (!cancelled) {
+            setMarketData((prev) => ({
+              ...prev,
+              gold: data,
+            }));
+          }
         }
-      }
 
-      if (
-        silverPrice.status === "fulfilled" &&
-        silverPrice.value.ok
-      ) {
-        const data = await silverPrice.value.json();
-        if (!cancelled) {
-          setMarketData((prev) => ({
-            ...prev,
-            silver: data,
-          }));
-        }
-      }
+        // SILVER
+        if (
+          silverPrice.status === "fulfilled" &&
+          silverPrice.value.ok
+        ) {
+          const data = await silverPrice.value.json();
 
-      if (
-        goldHistory.status === "fulfilled" &&
-        goldHistory.value.ok
-      ) {
-        const data = await goldHistory.value.json();
-        if (!cancelled) {
-          setHistoryData((prev) => ({
-            ...prev,
-            gold: [...(data.data || [])].reverse(),
-          }));
+          if (!cancelled) {
+            setMarketData((prev) => ({
+              ...prev,
+              silver: data,
+            }));
+          }
         }
-      }
 
-      if (
-        silverHistory.status === "fulfilled" &&
-        silverHistory.value.ok
-      ) {
-        const data = await silverHistory.value.json();
-        if (!cancelled) {
-          setHistoryData((prev) => ({
-            ...prev,
-            silver: [...(data.data || [])].reverse(),
-          }));
+        // GOLD HISTORY
+        if (
+          goldHistory.status === "fulfilled" &&
+          goldHistory.value.ok
+        ) {
+          const data =
+            await goldHistory.value.json();
+
+          if (!cancelled) {
+            setHistoryData((prev) => ({
+              ...prev,
+              gold: Array.isArray(data.data)
+                ? [...data.data].reverse()
+                : [],
+            }));
+          }
         }
+
+        // SILVER HISTORY
+        if (
+          silverHistory.status === "fulfilled" &&
+          silverHistory.value.ok
+        ) {
+          const data =
+            await silverHistory.value.json();
+
+          if (!cancelled) {
+            setHistoryData((prev) => ({
+              ...prev,
+              silver: Array.isArray(data.data)
+                ? [...data.data].reverse()
+                : [],
+            }));
+          }
+        }
+      } catch (error) {
+        console.error(
+          "Market data refresh error:",
+          error
+        );
       }
     };
 
-    fetchMarketData().catch((error) => {
-      console.error("Market data refresh error:", error);
-    });
+    fetchMarketData();
 
-    const interval = setInterval(() => {
-      fetchMarketData().catch((error) => {
-        console.error("Market data refresh error:", error);
-      });
-    }, 15000);
+    const interval = setInterval(
+      fetchMarketData,
+      15000
+    );
 
     return () => {
       cancelled = true;
@@ -1293,48 +1371,86 @@ export default function App() {
     };
   }, []);
 
+  /*
+   * ================================
+   * AUTH LOADING
+   * ================================
+   */
   if (authState === "checking") {
-  return <div>Loading...</div>;
-}
-
-if (authState === "login") {
-  return (
-    <div className="app-shell auth-preview">
-      <Topbar />
-
-      <Sidebar
-        activeMenu={activeMenu}
-        setActiveMenu={setActiveMenu}
-      />
-
-      <MarketContext.Provider
-        value={{
-          marketData,
-          historyData,
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <ActivePage activeMenu={activeMenu} />
-      </MarketContext.Provider>
+        Loading...
+      </div>
+    );
+  }
 
-      {/* Login Popup */}
-      <div className="login-overlay">
-        <div className="login-modal">
-          <LoginPage />
+  /*
+   * ================================
+   * LOGIN
+   * ================================
+   */
+  if (authState === "login") {
+    return (
+      <div className="app-shell auth-preview">
+        <Topbar />
+
+        <Sidebar
+          activeMenu={activeMenu}
+          setActiveMenu={setActiveMenu}
+        />
+
+        <MarketContext.Provider
+          value={{
+            marketData,
+            historyData,
+          }}
+        >
+          <ActivePage
+            activeMenu={activeMenu}
+          />
+        </MarketContext.Provider>
+
+        <div className="login-overlay">
+          <div className="login-modal">
+            <LoginPage />
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-if (authState === "notification") {
-  return (
-    <NotificationPreference
-      userId={userId}
-      onComplete={() => {
-        setAuthState("dashboard");
-      }}
-    />
-  );
-}
+    );
+  }
+
+  /*
+   * ================================
+   * NOTIFICATION PREFERENCE
+   * ================================
+   */
+  if (authState === "notification") {
+    return (
+      <NotificationPreference
+        userId={userId}
+        onComplete={() => {
+          console.log(
+            "Notification preferences saved."
+          );
+
+          setAuthState("dashboard");
+        }}
+      />
+    );
+  }
+
+  /*
+   * ================================
+   * DASHBOARD
+   * ================================
+   */
   return (
     <div className="app-shell">
       <Topbar />
@@ -1350,7 +1466,9 @@ if (authState === "notification") {
           historyData,
         }}
       >
-        <ActivePage activeMenu={activeMenu} />
+        <ActivePage
+          activeMenu={activeMenu}
+        />
       </MarketContext.Provider>
     </div>
   );

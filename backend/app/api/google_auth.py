@@ -157,6 +157,11 @@ class NotificationPreferenceRequest(BaseModel):
     phone_number: str | None = None
     telegram_username: str | None = None
 
+    email_consent: bool = False
+    sms_consent: bool = False
+    whatsapp_consent: bool = False
+    telegram_consent: bool = False
+
 @router.post("/notification-preferences")
 def save_notification_preferences(
     data: NotificationPreferenceRequest
@@ -164,6 +169,63 @@ def save_notification_preferences(
     conn = None
 
     try:
+        # Validate consent matches selected channels
+
+        if data.email_enabled and not data.email_consent:
+            raise HTTPException(
+                status_code=400,
+                detail="Email permission is required."
+            )
+
+        if data.sms_enabled and not data.sms_consent:
+            raise HTTPException(
+                status_code=400,
+                detail="SMS permission is required."
+            )
+
+        if data.whatsapp_enabled and not data.whatsapp_consent:
+            raise HTTPException(
+                status_code=400,
+                detail="WhatsApp permission is required."
+            )
+
+        if data.telegram_enabled and not data.telegram_consent:
+            raise HTTPException(
+                status_code=400,
+                detail="Telegram permission is required."
+            )
+
+        # Phone required for SMS / WhatsApp
+        if (data.sms_enabled or data.whatsapp_enabled) and not data.phone_number:
+            raise HTTPException(
+                status_code=400,
+                detail="Phone number is required for SMS or WhatsApp."
+            )
+
+        # Telegram username required for Telegram
+        if data.telegram_enabled and not data.telegram_username:
+            raise HTTPException(
+                status_code=400,
+                detail="Telegram username is required."
+            )
+
+        # Build notification channel
+        channels = []
+
+        if data.email_enabled:
+            channels.append("EMAIL")
+
+        if data.sms_enabled:
+            channels.append("SMS")
+
+        if data.whatsapp_enabled:
+            channels.append("WHATSAPP")
+
+        if data.telegram_enabled:
+            channels.append("TELEGRAM")
+
+        notification_channel = ",".join(channels) if channels else "NONE"
+
         conn = psycopg2.connect(DATABASE_URL)
 
         with conn.cursor() as cursor:
@@ -195,9 +257,20 @@ def save_notification_preferences(
                     sms_enabled = %s,
                     whatsapp_enabled = %s,
                     telegram_enabled = %s,
+
                     phone_number = %s,
                     telegram_username = %s,
+
+                    notification_channel = %s,
+
+                    email_consent = %s,
+                    sms_consent = %s,
+                    whatsapp_consent = %s,
+                    telegram_consent = %s,
+
+                    consent_updated_at = NOW(),
                     updated_at = NOW()
+
                 WHERE id = %s
                 """,
                 (
@@ -205,8 +278,17 @@ def save_notification_preferences(
                     data.sms_enabled,
                     data.whatsapp_enabled,
                     data.telegram_enabled,
+
                     data.phone_number,
                     data.telegram_username,
+
+                    notification_channel,
+
+                    data.email_consent,
+                    data.sms_consent,
+                    data.whatsapp_consent,
+                    data.telegram_consent,
+
                     data.user_id,
                 )
             )
@@ -215,7 +297,8 @@ def save_notification_preferences(
 
         return {
             "success": True,
-            "message": "Notification preferences saved"
+            "message": "Notification preferences saved",
+            "notification_channel": notification_channel
         }
 
     except HTTPException:
@@ -228,6 +311,50 @@ def save_notification_preferences(
         raise HTTPException(
             status_code=500,
             detail=f"Unable to save notification preferences: {str(e)}"
+        )
+
+    finally:
+        if conn:
+            conn.close()
+
+@router.get("/user/{user_id}")
+def get_user(user_id: int):
+    conn = None
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    email,
+                    profile_image
+                FROM users
+                WHERE id = %s
+                """,
+                (user_id,)
+            )
+
+            user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        return dict(user)
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to fetch user: {str(e)}"
         )
 
     finally:
